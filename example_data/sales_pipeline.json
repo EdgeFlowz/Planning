@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "pipeline_id": "sales-example",
+  "nodes": [
+    {
+      "id": "source",
+      "type": "source.csv",
+      "config": {
+        "path": "examples/data/sales.csv"
+      }
+    },
+    {
+      "id": "select",
+      "type": "transform.select",
+      "config": {
+        "columns": ["region", "product", "quantity", "price"]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "source",
+      "target": "select"
+    }
+  ]
+}
