@@ -6,7 +6,7 @@
       "id": "source",
       "type": "source.csv",
       "config": {
-        "path": "examples/data/sales.csv"
+        "path": "/Users/ben/Planning/example_data/sales.csv"
       }
     },
     {
@@ -20,21 +20,29 @@
       "id": "filter",
       "type": "transform.filter",
       "config": {
-        "column": "quantity",
-        "operator": ">",
-        "value": 1
+        "expression": {
+          "type": "binary_operation",
+          "operator": ">",
+          "left": { "type": "column", "name": "quantity" },
+          "right": { "type": "literal", "value": 1 }
+        }
       }
     },
     {
       "id": "calculate",
-      "type": "transform.calculate",
+      "type": "transform.expression",
       "config": {
-        "column": "revenue",
-        "expression": {
-          "op": "multiply",
-          "left": "quantity",
-          "right": "price"
-        }
+        "columns": [
+          {
+            "alias": "revenue",
+            "expression": {
+              "type": "binary_operation",
+              "operator": "*",
+              "left": { "type": "column", "name": "quantity" },
+              "right": { "type": "column", "name": "price" }
+            }
+          }
+        ]
       }
     },
     {
@@ -42,16 +50,16 @@
       "type": "transform.aggregate",
       "config": {
         "group_by": ["region"],
-        "aggregations": {
-          "revenue": "sum"
-        }
+        "aggregations": [
+          { "column": "revenue", "function": "sum", "alias": "revenue" }
+        ]
       }
     },
     {
       "id": "sink",
       "type": "sink.parquet",
       "config": {
-        "path": "output/sales.parquet"
+        "path": "/Users/ben/Planning/example_data/output/sales_output.parquet"
       }
     }
   ],
