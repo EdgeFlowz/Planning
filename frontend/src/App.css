@@ -128,6 +128,19 @@
   margin: 0 0 0.75rem;
 }
 
+.node-palette-category {
+  margin-bottom: 0.9rem;
+}
+
+.node-palette-category-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin: 0.6rem 0 0.4rem;
+}
+
 .node-palette-item {
   display: flex;
   gap: 0.5rem;
@@ -143,6 +156,16 @@
 .node-palette-item:hover {
   background: #eef2ff;
   border-color: #c7d2fe;
+}
+
+.node-palette-item.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.node-palette-item.disabled:hover {
+  background: #f8fafc;
+  border-color: #e2e8f0;
 }
 
 .node-palette-icon {
@@ -177,6 +200,26 @@
   margin: 0 0 0.15rem;
 }
 
+.config-panel-header-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.saved-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #15803d;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  white-space: nowrap;
+}
+
+.saved-badge.visible {
+  opacity: 1;
+}
+
 .config-panel-id {
   font-size: 0.72rem;
   color: #94a3b8;
@@ -187,6 +230,34 @@
 .config-panel-hint {
   font-size: 0.8rem;
   color: #64748b;
+}
+
+.config-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.config-issue {
+  font-size: 0.72rem;
+  color: #92400e;
+}
+
+.config-form-list-hint {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin: 0 0 0.2rem;
+  font-style: italic;
+}
+
+.input-invalid {
+  border-color: #ef4444 !important;
+  background: #fef2f2;
 }
 
 .config-form {
@@ -225,6 +296,106 @@
   font-size: 0.75rem;
   color: #15803d;
   margin: 0;
+}
+
+.config-form-subhead {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin-top: 0.4rem;
+}
+
+.config-form-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.config-form-row select,
+.config-form-row input[type="text"] {
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.config-form-row button,
+.expression-row button {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.4rem;
+  flex: none;
+}
+
+.remove-row-button {
+  color: #b91c1c;
+  border-color: #fecaca !important;
+  background: #fef2f2 !important;
+}
+
+.remove-row-button:hover {
+  background: #fee2e2 !important;
+}
+
+.config-form-row button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sort-column-name {
+  font-size: 0.76rem;
+  color: #334155;
+  flex: 1;
+}
+
+.config-raw-json {
+  font-size: 0.7rem;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0.6rem;
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 240px;
+  margin: 0;
+}
+
+.expression-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+.expression-row input[type="text"] {
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  width: 100px;
+}
+
+.operand-input {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.operand-input select,
+.operand-input input[type="text"] {
+  padding: 0.3rem 0.35rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  width: 90px;
 }
 
 .danger-button {
@@ -319,6 +490,7 @@
 }
 
 .pipeline-node {
+  position: relative;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   background: #fff;
@@ -329,6 +501,51 @@
 .pipeline-node.selected {
   border-color: #2563eb;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.35);
+}
+
+.pipeline-node.unsupported {
+  border-style: dashed;
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.pipeline-node-warning {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  cursor: default;
+}
+
+.pipeline-node-handle-labels {
+  position: absolute;
+  top: -1.1rem;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 22%;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.handle-left {
+  left: 30% !important;
+}
+
+.handle-right {
+  left: 70% !important;
 }
 
 .pipeline-node-header {

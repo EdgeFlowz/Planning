@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { useEditorStore } from "../store/editorStore";
-import { getAncestorChain } from "../lib/graph";
-import { computeChainOutput } from "../lib/transform";
-import type { PipelineEdge, PipelineNode } from "../types/pipeline";
+import type { GraphEdge } from "../lib/graph";
+import { computeNodeOutput } from "../lib/transform";
+import type { PipelineNode } from "../types/pipeline";
 
 const PREVIEW_ROW_LIMIT = 15;
 
@@ -16,8 +16,8 @@ export function DataPreviewTable() {
     () => nodes.map((n) => ({ id: n.id, type: n.data.nodeType, config: n.data.config })),
     [nodes],
   );
-  const pipelineEdges: PipelineEdge[] = useMemo(
-    () => edges.map((e) => ({ source: e.source, target: e.target })),
+  const graphEdges: GraphEdge[] = useMemo(
+    () => edges.map((e) => ({ source: e.source, target: e.target, targetHandle: e.targetHandle })),
     [edges],
   );
 
@@ -25,9 +25,8 @@ export function DataPreviewTable() {
 
   const table = useMemo(() => {
     if (!targetId) return null;
-    const chain = getAncestorChain(targetId, pipelineNodes, pipelineEdges);
-    return computeChainOutput(chain, sourceTables);
-  }, [targetId, pipelineNodes, pipelineEdges, sourceTables]);
+    return computeNodeOutput(targetId, pipelineNodes, graphEdges, sourceTables);
+  }, [targetId, pipelineNodes, graphEdges, sourceTables]);
 
   return (
     <section className="data-preview">

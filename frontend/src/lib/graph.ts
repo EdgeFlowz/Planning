@@ -1,30 +1,25 @@
-import type { PipelineEdge, PipelineNode } from "../types/pipeline";
+import { getNodeConfigIssues } from "./configValidation";
+import { isKnownNodeType, type PipelineEdge, type PipelineNode } from "../types/pipeline";
 
-export function getParentId(nodeId: string, edges: PipelineEdge[]): string | undefined {
-  return edges.find((e) => e.target === nodeId)?.source;
+/** An edge as seen by the editor, retaining which handle it connects into (needed for join's two inputs). */
+export interface GraphEdge extends PipelineEdge {
+  targetHandle?: string | null;
 }
 
-/** Walks backwards from nodeId to its root ancestor, returns root-first chain. */
-export function getAncestorChain(
-  nodeId: string,
-  nodes: PipelineNode[],
-  edges: PipelineEdge[],
-): PipelineNode[] {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const chain: PipelineNode[] = [];
-  const visited = new Set<string>();
-  let current: string | undefined = nodeId;
+export function getIncomingEdges(nodeId: string, edges: GraphEdge[]): GraphEdge[] {
+  return edges.filter((e) => e.target === nodeId);
+}
 
-  while (current) {
-    if (visited.has(current)) break;
-    visited.add(current);
-    const node = byId.get(current);
-    if (!node) break;
-    chain.unshift(node);
-    current = getParentId(current, edges);
-  }
-
-  return chain;
+/**
+ * Returns the source ids feeding a node, ordered so a "left" targetHandle comes before "right".
+ * For single-input nodes this is just `[parentId]` (or `[]` if unconnected).
+ */
+export function getOrderedParentIds(nodeId: string, edges: GraphEdge[]): string[] {
+  const rank = (handle?: string | null) => (handle === "right" ? 1 : 0);
+  return getIncomingEdges(nodeId, edges)
+    .slice()
+    .sort((a, b) => rank(a.targetHandle) - rank(b.targetHandle))
+    .map((e) => e.source);
 }
 
 export function detectCycle(nodes: PipelineNode[], edges: PipelineEdge[]): boolean {
@@ -93,12 +88,25 @@ export function validatePipeline(nodes: PipelineNode[], edges: PipelineEdge[]): 
       if (incoming !== 0) {
         issues.push({ nodeId: node.id, message: `Source node "${node.id}" must not have an incoming connection.` });
       }
+    } else if (node.type === "transform.join") {
+      if (incoming !== 2) {
+        issues.push({
+          nodeId: node.id,
+          message: `Join node "${node.id}" requires exactly two upstream inputs (left and right); found ${incoming}.`,
+        });
+      }
     } else {
       if (incoming === 0) {
         issues.push({ nodeId: node.id, message: `Node "${node.id}" has no upstream input.` });
       }
       if (incoming > 1) {
         issues.push({ nodeId: node.id, message: `Node "${node.id}" has more than one upstream input.` });
+      }
+    }
+
+    if (isKnownNodeType(node.type)) {
+      for (const message of getNodeConfigIssues(node.type, node.config)) {
+        issues.push({ nodeId: node.id, message: `${node.id}: ${message}` });
       }
     }
   }

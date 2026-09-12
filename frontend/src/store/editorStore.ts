@@ -58,8 +58,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   onConnect: (connection) => {
     if (!connection.source || !connection.target) return;
-    // Enforce single-input transforms: replace any existing edge into this target.
-    const withoutExisting = get().edges.filter((e) => e.target !== connection.target);
+    // Enforce single-input transforms: replace any existing edge into the same target handle.
+    // Join nodes have two handles ("left"/"right"), so a new "left" connection only replaces an existing "left" one.
+    const withoutExisting = get().edges.filter(
+      (e) => !(e.target === connection.target && (e.targetHandle ?? null) === (connection.targetHandle ?? null)),
+    );
     set({ edges: addEdge(connection, withoutExisting) });
   },
 
