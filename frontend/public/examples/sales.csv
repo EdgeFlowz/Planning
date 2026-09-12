@@ -1,0 +1,7 @@
+customer_id,region,product,quantity,price
+1,East,A,2,10
+2,West,B,5,20
+3,East,A,3,10
+4,South,C,1,50
+5,East,B,4,15
+6,West,A,2,30
