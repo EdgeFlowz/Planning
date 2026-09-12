@@ -1,8 +1,10 @@
 import type {
   AggregateConfig,
+  BinaryExpression,
   CastConfig,
   DeduplicateConfig,
   ExpressionConfig,
+  ExpressionOperand,
   FilterConfig,
   JoinConfig,
   NodeType,
@@ -19,6 +21,23 @@ function isBlank(value: unknown): boolean {
 function keyCount(spec: string | string[] | null | undefined): number {
   if (!spec) return 0;
   return Array.isArray(spec) ? spec.length : 1;
+}
+
+/** Null when the operand is filled in; otherwise a short label of what's missing ("left", "right"). */
+function operandIssue(operand: ExpressionOperand | undefined): string | null {
+  if (!operand) return "missing";
+  if (operand.type === "column") return isBlank(operand.name) ? "no column chosen" : null;
+  return operand.value === "" || operand.value === undefined ? "value is empty" : null;
+}
+
+function expressionIssues(expr: BinaryExpression | undefined, prefix: string): string[] {
+  if (!expr) return [`${prefix} has no expression configured.`];
+  const issues: string[] = [];
+  const leftIssue = operandIssue(expr.left);
+  const rightIssue = operandIssue(expr.right);
+  if (leftIssue) issues.push(`${prefix}: left side ${leftIssue}.`);
+  if (rightIssue) issues.push(`${prefix}: right side ${rightIssue}.`);
+  return issues;
 }
 
 /**
@@ -45,8 +64,7 @@ export function getNodeConfigIssues(type: NodeType, config: Record<string, unkno
 
     case "transform.filter": {
       const cfg = config as unknown as FilterConfig;
-      if (isBlank(cfg.column)) issues.push("Choose a column to filter on.");
-      if (isBlank(cfg.value)) issues.push("Enter a value to compare against.");
+      issues.push(...expressionIssues(cfg.expression, "Filter condition"));
       break;
     }
 
@@ -116,10 +134,12 @@ export function getNodeConfigIssues(type: NodeType, config: Record<string, unkno
         cfg.columns.forEach((spec, i) => {
           if (isBlank(spec.alias)) {
             issues.push(`Calculated column #${i + 1} needs a name.`);
-            return;
+          } else if (seenAliases.has(spec.alias)) {
+            issues.push(`Duplicate column name "${spec.alias}".`);
+          } else {
+            seenAliases.add(spec.alias);
           }
-          if (seenAliases.has(spec.alias)) issues.push(`Duplicate column name "${spec.alias}".`);
-          seenAliases.add(spec.alias);
+          issues.push(...expressionIssues(spec.expression, `Calculated column #${i + 1}`));
         });
       }
       break;

@@ -5,6 +5,7 @@ import {
   MiniMap,
   ReactFlow,
   useReactFlow,
+  type Node,
   type NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -22,7 +23,13 @@ export function Canvas() {
   const onConnect = useEditorStore((s) => s.onConnect);
   const addNode = useEditorStore((s) => s.addNode);
   const setSelectedNode = useEditorStore((s) => s.setSelectedNode);
+  const pruneRemovedNodes = useEditorStore((s) => s.pruneRemovedNodes);
   const { screenToFlowPosition } = useReactFlow();
+
+  const onNodesDelete = useCallback(
+    (deleted: Node[]) => pruneRemovedNodes(deleted.map((n) => n.id)),
+    [pruneRemovedNodes],
+  );
 
   const onDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -56,6 +63,7 @@ export function Canvas() {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodesDelete={onNodesDelete}
         onConnect={onConnect}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}

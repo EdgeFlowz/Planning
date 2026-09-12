@@ -29,6 +29,14 @@ interface EditorState {
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void;
   setSelectedNode: (id: string | null) => void;
   removeNode: (id: string) => void;
+  /**
+   * Cleans up editor-only state (source tables) for nodes removed some way other than
+   * `removeNode` — e.g. React Flow's built-in Delete/Backspace shortcut, which updates
+   * `nodes`/`edges` via onNodesChange/onEdgesChange directly rather than calling our action.
+   * Node/edge removal itself is already handled by those change events; this just prevents
+   * stale per-node data (like an uploaded CSV) from lingering under an id that no longer exists.
+   */
+  pruneRemovedNodes: (removedIds: string[]) => void;
   setSourceTable: (nodeId: string, table: ParsedCsv) => void;
   loadPipeline: (definition: PipelineDefinition, tables?: Record<string, ParsedCsv>) => void;
   reset: () => void;
@@ -99,6 +107,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       edges: get().edges.filter((e) => e.source !== id && e.target !== id),
       selectedNodeId: get().selectedNodeId === id ? null : get().selectedNodeId,
       sourceTables: rest,
+    });
+  },
+
+  pruneRemovedNodes: (removedIds) => {
+    if (removedIds.length === 0) return;
+    const removed = new Set(removedIds);
+    const sourceTables = Object.fromEntries(
+      Object.entries(get().sourceTables).filter(([nodeId]) => !removed.has(nodeId)),
+    );
+    set({
+      sourceTables,
+      selectedNodeId: removed.has(get().selectedNodeId ?? "") ? null : get().selectedNodeId,
     });
   },
 

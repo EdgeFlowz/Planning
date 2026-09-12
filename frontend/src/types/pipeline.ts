@@ -40,14 +40,6 @@ export interface SelectConfig {
   columns: string[];
 }
 
-export type FilterOperator = "==" | "!=" | ">" | ">=" | "<" | "<=" | "contains";
-
-export interface FilterConfig {
-  column: string;
-  operator: FilterOperator;
-  value: string;
-}
-
 export interface RenameConfig {
   mapping: Record<string, string>;
 }
@@ -101,11 +93,16 @@ export interface DeduplicateConfig {
   keep: DeduplicateKeep;
 }
 
-export type ExpressionOperand = { type: "column"; name: string } | { type: "literal"; value: string };
+export type ExpressionOperand = { type: "column"; name: string } | { type: "literal"; value: string | number };
+
+/** Arithmetic operators build a value (used by calculated columns); comparison operators build a predicate (used by filter). */
+export type ArithmeticOperator = "+" | "-" | "*" | "/" | "concat";
+export type ComparisonOperator = "==" | "!=" | ">" | ">=" | "<" | "<=" | "contains";
+export type BinaryOperator = ArithmeticOperator | ComparisonOperator;
 
 export interface BinaryExpression {
   type: "binary_operation";
-  operator: "+" | "-" | "*" | "/" | "concat";
+  operator: BinaryOperator;
   left: ExpressionOperand;
   right: ExpressionOperand;
 }
@@ -117,6 +114,11 @@ export interface ExpressionColumnSpec {
 
 export interface ExpressionConfig {
   columns: ExpressionColumnSpec[];
+}
+
+/** Matches node_catalogue.json / sales_pipeline.json: filtering is a boolean expression, not a flat {column,operator,value}. */
+export interface FilterConfig {
+  expression: BinaryExpression;
 }
 
 export const NODE_TYPE_LABELS: Record<NodeType, string> = {
@@ -148,7 +150,14 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
     case "transform.select":
       return { columns: [] } satisfies SelectConfig;
     case "transform.filter":
-      return { column: "", operator: "==", value: "" } satisfies FilterConfig;
+      return {
+        expression: {
+          type: "binary_operation",
+          operator: "==",
+          left: { type: "column", name: "" },
+          right: { type: "literal", value: "" },
+        },
+      } satisfies FilterConfig;
     case "transform.rename":
       return { mapping: {} } satisfies RenameConfig;
     case "transform.cast":

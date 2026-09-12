@@ -11,13 +11,13 @@ import type {
   AggregationSpec,
   BinaryExpression,
   CastConfig,
+  ComparisonOperator,
   DeduplicateConfig,
   DeduplicateKeep,
   ExpressionColumnSpec,
   ExpressionConfig,
   ExpressionOperand,
   FilterConfig,
-  FilterOperator,
   JoinConfig,
   JoinHow,
   PipelineNode,
@@ -27,7 +27,7 @@ import type {
   SourceCsvConfig,
 } from "../types/pipeline";
 
-const FILTER_OPERATORS: FilterOperator[] = ["==", "!=", ">", ">=", "<", "<=", "contains"];
+const FILTER_OPERATORS: ComparisonOperator[] = ["==", "!=", ">", ">=", "<", "<=", "contains"];
 const CAST_TYPES = ["string", "int", "float", "boolean", "date"];
 const JOIN_HOW_OPTIONS: JoinHow[] = ["inner", "left", "right", "full", "semi", "anti", "cross"];
 const AGGREGATION_FUNCTIONS: AggregationFunction[] = [
@@ -329,42 +329,34 @@ function FilterForm({
   config: FilterConfig;
   onChange: (c: Record<string, unknown>) => void;
 }) {
+  const expression: BinaryExpression = config.expression ?? {
+    type: "binary_operation",
+    operator: "==",
+    left: { type: "column", name: available[0] ?? "" },
+    right: { type: "literal", value: "" },
+  };
+
+  const updateExpr = (patch: Partial<BinaryExpression>) => {
+    onChange({ expression: { ...expression, ...patch } });
+  };
+
   return (
     <div className="config-form">
-      <label>
-        Column
+      <div className="expression-row">
+        <OperandInput available={available} operand={expression.left} onChange={(left) => updateExpr({ left })} />
         <select
-          value={config.column}
-          className={config.column === "" ? "input-invalid" : undefined}
-          onChange={(e) => onChange({ ...config, column: e.target.value })}
+          value={expression.operator}
+          onChange={(e) => updateExpr({ operator: e.target.value as ComparisonOperator })}
         >
-          <option value="">Select a column</option>
-          {available.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Operator
-        <select value={config.operator} onChange={(e) => onChange({ ...config, operator: e.target.value as FilterOperator })}>
           {FILTER_OPERATORS.map((op) => (
             <option key={op} value={op}>
               {op}
             </option>
           ))}
         </select>
-      </label>
-      <label>
-        Value
-        <input
-          type="text"
-          value={config.value}
-          className={config.value.trim() === "" ? "input-invalid" : undefined}
-          onChange={(e) => onChange({ ...config, value: e.target.value })}
-        />
-      </label>
+        <OperandInput available={available} operand={expression.right} onChange={(right) => updateExpr({ right })} />
+      </div>
+      <p className="config-panel-hint">Keeps rows where this condition is true.</p>
     </div>
   );
 }
@@ -792,7 +784,12 @@ function OperandInput({
         <option value="literal">value</option>
       </select>
       {operand.type === "column" ? (
-        <select value={operand.name} onChange={(e) => onChange({ type: "column", name: e.target.value })}>
+        <select
+          value={operand.name}
+          className={operand.name === "" ? "input-invalid" : undefined}
+          onChange={(e) => onChange({ type: "column", name: e.target.value })}
+        >
+          <option value="">choose column</option>
           {available.map((c) => (
             <option key={c} value={c}>
               {c}
@@ -800,7 +797,16 @@ function OperandInput({
           ))}
         </select>
       ) : (
-        <input type="text" value={operand.value} onChange={(e) => onChange({ type: "literal", value: e.target.value })} />
+        <input
+          type="text"
+          value={operand.value}
+          className={operand.value === "" ? "input-invalid" : undefined}
+          onChange={(e) => {
+            const raw = e.target.value;
+            const numeric = raw.trim() !== "" && !Number.isNaN(Number(raw)) ? Number(raw) : raw;
+            onChange({ type: "literal", value: numeric });
+          }}
+        />
       )}
     </span>
   );

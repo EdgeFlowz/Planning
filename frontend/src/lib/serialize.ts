@@ -2,11 +2,19 @@ import type { EditorEdge, EditorNode } from "../types/editor";
 import type { NodeType, PipelineDefinition } from "../types/pipeline";
 import { defaultConfigFor } from "../types/pipeline";
 
+/**
+ * Builds the canonical pipeline definition from the editor's current canvas state only.
+ * Deliberately stateless — no history, no record of past edits or removed nodes. As a hard
+ * guarantee against stale references (e.g. an edge left pointing at a node id that no longer
+ * exists), edges are dropped unless both endpoints are present in `nodes` right now.
+ */
 export function toPipelineDefinition(
   pipelineId: string,
   nodes: EditorNode[],
   edges: EditorEdge[],
 ): PipelineDefinition {
+  const liveNodeIds = new Set(nodes.map((n) => n.id));
+
   return {
     schema_version: 1,
     pipeline_id: pipelineId,
@@ -15,7 +23,9 @@ export function toPipelineDefinition(
       type: n.data.nodeType,
       config: n.data.config,
     })),
-    edges: edges.map((e) => ({ source: e.source, target: e.target })),
+    edges: edges
+      .filter((e) => liveNodeIds.has(e.source) && liveNodeIds.has(e.target))
+      .map((e) => ({ source: e.source, target: e.target })),
   };
 }
 

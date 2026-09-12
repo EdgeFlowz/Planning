@@ -9,7 +9,6 @@ import type {
   ExpressionConfig,
   ExpressionOperand,
   FilterConfig,
-  FilterOperator,
   JoinConfig,
   PipelineNode,
   RenameConfig,
@@ -25,29 +24,6 @@ function pickColumns(table: ParsedCsv, columns: string[]): ParsedCsv {
   };
 }
 
-function evaluateFilter(cellValue: string | undefined, operator: FilterOperator, value: string): boolean {
-  const cell = cellValue ?? "";
-  const cellNum = Number(cell);
-  const valueNum = Number(value);
-  const bothNumeric = cell !== "" && value !== "" && !Number.isNaN(cellNum) && !Number.isNaN(valueNum);
-
-  switch (operator) {
-    case "==":
-      return bothNumeric ? cellNum === valueNum : cell === value;
-    case "!=":
-      return bothNumeric ? cellNum !== valueNum : cell !== value;
-    case ">":
-      return bothNumeric ? cellNum > valueNum : cell > value;
-    case ">=":
-      return bothNumeric ? cellNum >= valueNum : cell >= value;
-    case "<":
-      return bothNumeric ? cellNum < valueNum : cell < value;
-    case "<=":
-      return bothNumeric ? cellNum <= valueNum : cell <= value;
-    case "contains":
-      return cell.includes(value);
-  }
-}
 
 function castValue(value: string, type: string): string {
   switch (type) {
@@ -69,10 +45,11 @@ function castValue(value: string, type: string): string {
 }
 
 function resolveOperand(operand: ExpressionOperand, row: Record<string, string>): string {
-  return operand.type === "column" ? (row[operand.name] ?? "") : operand.value;
+  return operand.type === "column" ? (row[operand.name] ?? "") : String(operand.value);
 }
 
-function evaluateExpression(row: Record<string, string>, expr: BinaryExpression): string {
+/** Arithmetic/concat operators — produces a value, used by calculated columns. */
+function evaluateArithmetic(row: Record<string, string>, expr: BinaryExpression): string {
   const leftRaw = resolveOperand(expr.left, row);
   const rightRaw = resolveOperand(expr.right, row);
   if (expr.operator === "concat") return `${leftRaw}${rightRaw}`;
@@ -90,6 +67,37 @@ function evaluateExpression(row: Record<string, string>, expr: BinaryExpression)
       return String(l * r);
     case "/":
       return r === 0 ? "" : String(l / r);
+    default:
+      return "";
+  }
+}
+
+/** Comparison operators — produces a predicate, used by filter. */
+function evaluateComparison(row: Record<string, string>, expr: BinaryExpression): boolean {
+  const leftRaw = resolveOperand(expr.left, row);
+  const rightRaw = resolveOperand(expr.right, row);
+
+  if (expr.operator === "contains") return leftRaw.includes(rightRaw);
+
+  const l = Number(leftRaw);
+  const r = Number(rightRaw);
+  const bothNumeric = leftRaw !== "" && rightRaw !== "" && !Number.isNaN(l) && !Number.isNaN(r);
+
+  switch (expr.operator) {
+    case "==":
+      return bothNumeric ? l === r : leftRaw === rightRaw;
+    case "!=":
+      return bothNumeric ? l !== r : leftRaw !== rightRaw;
+    case ">":
+      return bothNumeric ? l > r : leftRaw > rightRaw;
+    case ">=":
+      return bothNumeric ? l >= r : leftRaw >= rightRaw;
+    case "<":
+      return bothNumeric ? l < r : leftRaw < rightRaw;
+    case "<=":
+      return bothNumeric ? l <= r : leftRaw <= rightRaw;
+    default:
+      return false;
   }
 }
 
@@ -149,10 +157,10 @@ export function applyNode(table: ParsedCsv, node: PipelineNode): ParsedCsv {
 
     case "transform.filter": {
       const cfg = node.config as unknown as FilterConfig;
-      if (!cfg.column) return table;
+      if (!cfg.expression) return table;
       return {
         columns: table.columns,
-        rows: table.rows.filter((row) => evaluateFilter(row[cfg.column], cfg.operator, cfg.value)),
+        rows: table.rows.filter((row) => evaluateComparison(row, cfg.expression)),
       };
     }
 
@@ -261,7 +269,7 @@ export function applyNode(table: ParsedCsv, node: PipelineNode): ParsedCsv {
       const rows = table.rows.map((row) => {
         const out = { ...row };
         for (const spec of cfg.columns) {
-          if (spec.alias) out[spec.alias] = evaluateExpression(row, spec.expression);
+          if (spec.alias) out[spec.alias] = evaluateArithmetic(row, spec.expression);
         }
         return out;
       });

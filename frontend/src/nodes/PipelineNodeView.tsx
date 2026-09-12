@@ -4,9 +4,11 @@ import { getNodeConfigIssues } from "../lib/configValidation";
 import { isKnownNodeType, labelForType } from "../types/pipeline";
 import type {
   AggregateConfig,
+  BinaryExpression,
   CastConfig,
   DeduplicateConfig,
   ExpressionConfig,
+  ExpressionOperand,
   FilterConfig,
   JoinConfig,
   RenameConfig,
@@ -14,6 +16,15 @@ import type {
   SortConfig,
   SourceCsvConfig,
 } from "../types/pipeline";
+
+function describeOperand(operand: ExpressionOperand): string {
+  return operand.type === "column" ? operand.name || "?" : String(operand.value);
+}
+
+function describeExpression(expr: BinaryExpression | undefined): string {
+  if (!expr) return "not configured";
+  return `${describeOperand(expr.left)} ${expr.operator} ${describeOperand(expr.right)}`;
+}
 
 const ICONS: Record<string, string> = {
   "source.csv": "\u{1F4C4}",
@@ -40,7 +51,7 @@ function summarize(data: EditorNode["data"]): string {
     }
     case "transform.filter": {
       const cfg = data.config as unknown as FilterConfig;
-      return cfg.column ? `${cfg.column} ${cfg.operator} ${cfg.value}` : "not configured";
+      return describeExpression(cfg.expression);
     }
     case "transform.rename": {
       const cfg = data.config as unknown as RenameConfig;
