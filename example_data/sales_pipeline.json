@@ -15,12 +15,66 @@
       "config": {
         "columns": ["region", "product", "quantity", "price"]
       }
+    },
+    {
+      "id": "filter",
+      "type": "transform.filter",
+      "config": {
+        "column": "quantity",
+        "operator": ">",
+        "value": 1
+      }
+    },
+    {
+      "id": "calculate",
+      "type": "transform.calculate",
+      "config": {
+        "column": "revenue",
+        "expression": {
+          "op": "multiply",
+          "left": "quantity",
+          "right": "price"
+        }
+      }
+    },
+    {
+      "id": "aggregate",
+      "type": "transform.aggregate",
+      "config": {
+        "group_by": ["region"],
+        "aggregations": {
+          "revenue": "sum"
+        }
+      }
+    },
+    {
+      "id": "sink",
+      "type": "sink.parquet",
+      "config": {
+        "path": "output/sales.parquet"
+      }
     }
   ],
   "edges": [
     {
       "source": "source",
       "target": "select"
+    },
+    {
+      "source": "select",
+      "target": "filter"
+    },
+    {
+      "source": "filter",
+      "target": "calculate"
+    },
+    {
+      "source": "calculate",
+      "target": "aggregate"
+    },
+    {
+      "source": "aggregate",
+      "target": "sink"
     }
   ]
 }
