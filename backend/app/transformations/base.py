@@ -6,8 +6,12 @@ from typing import Protocol
 
 import polars as pl
 
+from app.domain.models import NodeMetadata
+
 
 class Transform(Protocol):
+    metadata: NodeMetadata
+    
     def apply(self, inputs: list[pl.LazyFrame], config: dict) -> pl.LazyFrame: ...
 
 

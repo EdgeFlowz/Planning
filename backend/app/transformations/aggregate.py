@@ -1,8 +1,10 @@
-from typing import Callable
+from collections.abc import Callable
 
 import polars as pl
 
+from app.domain.models import NodeMetadata
 from app.transformations.base import single_input
+from app.transformations.schemas import AggregateConfig
 
 _AGG_FUNCTIONS: dict[str, Callable[[pl.Expr], pl.Expr]] = {
     "sum": pl.Expr.sum,
@@ -19,6 +21,14 @@ _AGG_FUNCTIONS: dict[str, Callable[[pl.Expr], pl.Expr]] = {
 
 
 class AggregateTransform:
+    metadata: NodeMetadata = NodeMetadata(
+        type="transform.aggregate",
+        name="Aggregate Transform",
+        description="Aggregate data based on specified columns and functions.",
+        category="transformation",
+        version=1,
+        config_schema=AggregateConfig.model_json_schema(),
+    )
     def apply(self, inputs: list[pl.LazyFrame], config: dict) -> pl.LazyFrame:
         frame = single_input(inputs)
         aggregations = []

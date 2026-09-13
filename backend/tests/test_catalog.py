@@ -21,5 +21,7 @@ def test_implemented_transform_nodes_expose_a_config_schema():
 
     assert body["transform.select"]["implemented"] is True
     assert body["transform.select"]["config_schema"]["required"] == ["columns"]
-    assert body["source.csv"]["implemented"] is False
-    assert body["source.csv"]["config_schema"] == {}
+    assert body["source.csv"]["implemented"] is True
+    assert body["source.csv"]["config_schema"]["required"] == ["path"]
+    assert body["source.sql"]["implemented"] is False
+    assert body["source.sql"]["config_schema"] == {}

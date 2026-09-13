@@ -6,6 +6,14 @@ class Node(BaseModel):
     type: str
     config: dict
 
+class NodeMetadata(BaseModel):
+    type: str
+    name: str
+    description: str
+    category: str
+    version: int = 1
+    config_schema: dict
+    # ports will come next
 
 class Edge(BaseModel):
     source: str

@@ -1,7 +1,19 @@
 import polars as pl
 
+from app.domain.models import NodeMetadata
+from app.transformations.schemas import JoinConfig
+
 
 class JoinTransform:
+    metadata: NodeMetadata = NodeMetadata(
+        type="transform.join",
+        name="Join Transform",
+        description="Join two data frames based on specified keys.",
+        category="transformation",
+        version=1,
+        config_schema=JoinConfig.model_json_schema(),
+    )
+
     def apply(self, inputs: list[pl.LazyFrame], config: dict) -> pl.LazyFrame:
         if len(inputs) != 2:
             raise ValueError(f"transform.join expects exactly 2 input frames, got {len(inputs)}")

@@ -6,7 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from app.transformations.schemas import TRANSFORM_CONFIG_MODELS
+from app.connectors.registry import get_sink_metadata, get_source_metadata
+from app.transformations.registry import get_transform_metadata
 
 NodeCategory = Literal["source", "transform", "sink"]
 
@@ -19,19 +20,41 @@ class NodeTypeDefinition(BaseModel):
     config_schema: dict
 
 
-def _transform_entry(node_type: str, display_name: str) -> NodeTypeDefinition:
-    config_model = TRANSFORM_CONFIG_MODELS[node_type]
+def _transform_entry(node_type: str) -> NodeTypeDefinition:
+    metadata = get_transform_metadata(node_type)
     return NodeTypeDefinition(
-        type=node_type,
+        type=metadata.type,
         category="transform",
-        display_name=display_name,
+        display_name=metadata.name,
         implemented=True,
-        config_schema=config_model.model_json_schema(),
+        config_schema=metadata.config_schema,
+    )
+
+
+def _source_entry(node_type: str) -> NodeTypeDefinition:
+    metadata = get_source_metadata(node_type)
+    return NodeTypeDefinition(
+        type=metadata.type,
+        category="source",
+        display_name=metadata.name,
+        implemented=True,
+        config_schema=metadata.config_schema,
+    )
+
+
+def _sink_entry(node_type: str) -> NodeTypeDefinition:
+    metadata = get_sink_metadata(node_type)
+    return NodeTypeDefinition(
+        type=metadata.type,
+        category="sink",
+        display_name=metadata.name,
+        implemented=True,
+        config_schema=metadata.config_schema,
     )
 
 
 def _unimplemented_entry(node_type: str, category: NodeCategory, display_name: str) -> NodeTypeDefinition:
-    # Connector not built yet (see app/connectors); config shape is not final.
+    # No connector implementation registered yet for this node type (see app/connectors).
     return NodeTypeDefinition(
         type=node_type,
         category=category,
@@ -42,19 +65,21 @@ def _unimplemented_entry(node_type: str, category: NodeCategory, display_name: s
 
 
 NODE_CATALOG: list[NodeTypeDefinition] = [
-    _unimplemented_entry("source.csv", "source", "CSV Source"),
-    _unimplemented_entry("source.parquet", "source", "Parquet Source"),
+    _source_entry("source.csv"),
+    _source_entry("source.parquet"),
     _unimplemented_entry("source.sql", "source", "SQL Source"),
-    _transform_entry("transform.select", "Select Columns"),
-    _transform_entry("transform.filter", "Filter Rows"),
-    _transform_entry("transform.rename", "Rename Columns"),
-    _transform_entry("transform.cast", "Cast Types"),
-    _transform_entry("transform.join", "Join"),
-    _transform_entry("transform.aggregate", "Aggregate"),
-    _transform_entry("transform.sort", "Sort"),
-    _transform_entry("transform.deduplicate", "Deduplicate"),
-    _transform_entry("transform.expression", "Add Calculated Column"),
-    _unimplemented_entry("sink.csv", "sink", "CSV Sink"),
-    _unimplemented_entry("sink.parquet", "sink", "Parquet Sink"),
+    _transform_entry("transform.select"),
+    _transform_entry("transform.filter"),
+    _transform_entry("transform.rename"),
+    _transform_entry("transform.cast"),
+    _transform_entry("transform.join"),
+    _transform_entry("transform.aggregate"),
+    _transform_entry("transform.sort"),
+    _transform_entry("transform.deduplicate"),
+    _transform_entry("transform.expression"),
+    _sink_entry("sink.csv"),
+    _sink_entry("sink.parquet"),
     _unimplemented_entry("sink.sql", "sink", "SQL Sink"),
 ]
+
+

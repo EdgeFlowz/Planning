@@ -1,8 +1,10 @@
 import polars as pl
 
+from app.domain.models import NodeMetadata
 from app.transformations.base import single_input
+from app.transformations.schemas import CastConfig
 
-_DTYPES: dict[str, pl.DataType] = {
+_DTYPES = {
     "int8": pl.Int8,
     "int16": pl.Int16,
     "int32": pl.Int32,
@@ -31,6 +33,15 @@ def _resolve_dtype(name: str) -> pl.DataType:
 
 
 class CastTransform:
+    metadata: NodeMetadata = NodeMetadata(
+        type="transform.cast",
+        name="Cast Transform",
+        description="Cast columns to specified data types.",
+        category="transformation",
+        version=1,
+        config_schema=CastConfig.model_json_schema(),
+    )
+
     def apply(self, inputs: list[pl.LazyFrame], config: dict) -> pl.LazyFrame:
         dtypes = {column: _resolve_dtype(dtype) for column, dtype in config["columns"].items()}
         return single_input(inputs).cast(dtypes)

@@ -18,6 +18,7 @@ from app.transformations.join import JoinTransform
 from app.transformations.rename import RenameTransform
 from app.transformations.select import SelectTransform
 from app.transformations.sort import SortTransform
+from app.domain.models import NodeMetadata
 
 TRANSFORMS: dict[str, Transform] = {
     "transform.select": SelectTransform(),
@@ -37,6 +38,9 @@ def get_transform(node_type: str) -> Transform:
         return TRANSFORMS[node_type]
     except KeyError:
         raise KeyError(f"No transform registered for node type '{node_type}'") from None
+
+def get_transform_metadata(node_type: str) -> NodeMetadata:
+    return get_transform(node_type).metadata
 
 
 def apply_transform(node_type: str, inputs: list[pl.LazyFrame], config: dict) -> pl.LazyFrame:

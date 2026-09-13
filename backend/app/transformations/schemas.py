@@ -59,15 +59,3 @@ class ExpressionColumnSpec(BaseModel):
 class ExpressionConfig(BaseModel):
     columns: list[ExpressionColumnSpec]
 
-
-TRANSFORM_CONFIG_MODELS: dict[str, type[BaseModel]] = {
-    "transform.select": SelectConfig,
-    "transform.filter": FilterConfig,
-    "transform.rename": RenameConfig,
-    "transform.cast": CastConfig,
-    "transform.join": JoinConfig,
-    "transform.aggregate": AggregateConfig,
-    "transform.sort": SortConfig,
-    "transform.deduplicate": DeduplicateConfig,
-    "transform.expression": ExpressionConfig,
-}
