@@ -1,6 +1,7 @@
 import type { EditorEdge, EditorNode } from "../types/editor";
-import type { NodeType, PipelineDefinition } from "../types/pipeline";
-import { defaultConfigFor } from "../types/pipeline";
+import type { PipelineDefinition } from "../types/pipeline";
+import { useCatalogueStore } from "../store/catalogueStore";
+import { buildDefaultConfig } from "./jsonSchema";
 
 /**
  * Builds the canonical pipeline definition from the editor's current canvas state only.
@@ -34,15 +35,17 @@ export function fromPipelineDefinition(definition: PipelineDefinition): {
   nodes: EditorNode[];
   edges: EditorEdge[];
 } {
-  const nodes: EditorNode[] = definition.nodes.map((n, index) => ({
-    id: n.id,
-    type: "pipelineNode",
-    position: { x: 100, y: 80 + index * 140 },
-    data: {
-      nodeType: n.type as NodeType,
-      config: { ...defaultConfigFor(n.type as NodeType), ...n.config },
-    },
-  }));
+  const entries = useCatalogueStore.getState().entries;
+  const nodes: EditorNode[] = definition.nodes.map((n, index) => {
+    const schema = entries.find((e) => e.type === n.type)?.config_schema ?? {};
+    const defaults = buildDefaultConfig(schema) as Record<string, unknown>;
+    return {
+      id: n.id,
+      type: "pipelineNode",
+      position: { x: 100, y: 80 + index * 140 },
+      data: { nodeType: n.type, config: { ...defaults, ...n.config } },
+    };
+  });
 
   const edges: EditorEdge[] = definition.edges.map((e) => ({
     id: `${e.source}->${e.target}`,

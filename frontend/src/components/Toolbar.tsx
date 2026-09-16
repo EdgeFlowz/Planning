@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useEditorStore } from "../store/editorStore";
+import { useCatalogueStore } from "../store/catalogueStore";
 import { validatePipeline } from "../lib/graph";
 import { toPipelineDefinition, downloadJson } from "../lib/serialize";
 import { parseCsvText } from "../lib/csv";
@@ -12,6 +13,7 @@ export function Toolbar() {
   const edges = useEditorStore((s) => s.edges);
   const loadPipeline = useEditorStore((s) => s.loadPipeline);
   const reset = useEditorStore((s) => s.reset);
+  const catalogueEntries = useCatalogueStore((s) => s.entries);
 
   const definition = useMemo(
     () => toPipelineDefinition(pipelineId, nodes, edges),
@@ -19,8 +21,8 @@ export function Toolbar() {
   );
 
   const issues = useMemo(
-    () => validatePipeline(definition.nodes, definition.edges),
-    [definition],
+    () => validatePipeline(definition.nodes, definition.edges, catalogueEntries),
+    [definition, catalogueEntries],
   );
 
   const handleExport = () => {

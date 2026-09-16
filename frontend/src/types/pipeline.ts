@@ -1,8 +1,11 @@
-// Mirrors backend/app/domain/models.py plus example_data/node_catalogue.json. Keep in sync with those.
+// Mirrors backend/app/domain/models.py. Node type availability, display names, and config shape
+// now come from the live GET /nodes catalog (see store/catalogueStore.ts) rather than being
+// hardcoded here — only the shapes this editor's own logic (client-side preview execution in
+// lib/transform.ts, pipeline-shape validation in lib/graph.ts) needs to reason about live below.
 
 export interface PipelineNode {
   id: string;
-  type: NodeType;
+  type: string;
   config: Record<string, unknown>;
 }
 
@@ -18,22 +21,10 @@ export interface PipelineDefinition {
   edges: PipelineEdge[];
 }
 
-/** Node types this editor can create and configure. A subset of node_catalogue.json's "implemented: true" entries. */
-export type NodeType =
-  | "source.csv"
-  | "transform.select"
-  | "transform.filter"
-  | "transform.rename"
-  | "transform.cast"
-  | "transform.join"
-  | "transform.aggregate"
-  | "transform.sort"
-  | "transform.deduplicate"
-  | "transform.expression";
-
 export interface SourceCsvConfig {
   path: string;
-  has_header: boolean;
+  header: boolean;
+  delimiter?: string;
 }
 
 export interface SelectConfig {
@@ -93,84 +84,29 @@ export interface DeduplicateConfig {
   keep: DeduplicateKeep;
 }
 
-export type ExpressionOperand = { type: "column"; name: string } | { type: "literal"; value: string | number };
+/**
+ * The declarative expression grammar (requirements.md §7.2 / backend/app/transformations/
+ * expressions.py's compile_expression): recursive and discriminated on `type`, matching the real
+ * JSON Schema the backend now emits for transform.filter / transform.expression exactly — so this
+ * editor's client-side preview (lib/transform.ts) can evaluate anything the generic config form
+ * lets a user build.
+ */
+export type BinaryOperator = "==" | "!=" | ">" | ">=" | "<" | "<=" | "and" | "or" | "+" | "-" | "*" | "/";
 
-/** Arithmetic operators build a value (used by calculated columns); comparison operators build a predicate (used by filter). */
-export type ArithmeticOperator = "+" | "-" | "*" | "/" | "concat";
-export type ComparisonOperator = "==" | "!=" | ">" | ">=" | "<" | "<=" | "contains";
-export type BinaryOperator = ArithmeticOperator | ComparisonOperator;
+export type ColumnExpr = { type: "column"; name: string };
+export type LiteralExpr = { type: "literal"; value: string | number | boolean };
+export type BinaryExpr = { type: "binary_operation"; operator: BinaryOperator; left: Expression; right: Expression };
+export type Expression = ColumnExpr | LiteralExpr | BinaryExpr;
 
-export interface BinaryExpression {
-  type: "binary_operation";
-  operator: BinaryOperator;
-  left: ExpressionOperand;
-  right: ExpressionOperand;
+export interface FilterConfig {
+  expression: Expression;
 }
 
 export interface ExpressionColumnSpec {
   alias: string;
-  expression: BinaryExpression;
+  expression: Expression;
 }
 
 export interface ExpressionConfig {
   columns: ExpressionColumnSpec[];
-}
-
-/** Matches node_catalogue.json / sales_pipeline.json: filtering is a boolean expression, not a flat {column,operator,value}. */
-export interface FilterConfig {
-  expression: BinaryExpression;
-}
-
-export const NODE_TYPE_LABELS: Record<NodeType, string> = {
-  "source.csv": "CSV Source",
-  "transform.select": "Select Columns",
-  "transform.filter": "Filter Rows",
-  "transform.rename": "Rename Columns",
-  "transform.cast": "Cast Types",
-  "transform.join": "Join",
-  "transform.aggregate": "Aggregate",
-  "transform.sort": "Sort",
-  "transform.deduplicate": "Deduplicate",
-  "transform.expression": "Add Calculated Column",
-};
-
-/** Falls back to the raw type string for a node type the editor doesn't recognize (e.g. not yet implemented). */
-export function labelForType(type: string): string {
-  return NODE_TYPE_LABELS[type as NodeType] ?? type;
-}
-
-export function isKnownNodeType(type: string): type is NodeType {
-  return type in NODE_TYPE_LABELS;
-}
-
-export function defaultConfigFor(type: NodeType): Record<string, unknown> {
-  switch (type) {
-    case "source.csv":
-      return { path: "", has_header: true } satisfies SourceCsvConfig;
-    case "transform.select":
-      return { columns: [] } satisfies SelectConfig;
-    case "transform.filter":
-      return {
-        expression: {
-          type: "binary_operation",
-          operator: "==",
-          left: { type: "column", name: "" },
-          right: { type: "literal", value: "" },
-        },
-      } satisfies FilterConfig;
-    case "transform.rename":
-      return { mapping: {} } satisfies RenameConfig;
-    case "transform.cast":
-      return { columns: {} } satisfies CastConfig;
-    case "transform.join":
-      return { how: "inner", on: null, left_on: null, right_on: null } satisfies JoinConfig;
-    case "transform.aggregate":
-      return { group_by: [], aggregations: [] } satisfies AggregateConfig;
-    case "transform.sort":
-      return { by: [], descending: false } satisfies SortConfig;
-    case "transform.deduplicate":
-      return { subset: null, keep: "any" } satisfies DeduplicateConfig;
-    case "transform.expression":
-      return { columns: [] } satisfies ExpressionConfig;
-  }
 }

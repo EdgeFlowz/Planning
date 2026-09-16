@@ -11,7 +11,6 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useEditorStore } from "../store/editorStore";
 import { PipelineNodeView } from "../nodes/PipelineNodeView";
-import type { NodeType } from "../types/pipeline";
 
 const nodeTypes = { pipelineNode: PipelineNodeView };
 
@@ -39,7 +38,7 @@ export function Canvas() {
   const onDrop = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
       event.preventDefault();
-      const type = event.dataTransfer.getData("application/pipeline-node-type") as NodeType;
+      const type = event.dataTransfer.getData("application/pipeline-node-type");
       if (!type) return;
       const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
       addNode(type, position);

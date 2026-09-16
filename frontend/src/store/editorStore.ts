@@ -8,9 +8,11 @@ import {
   type NodeChange,
 } from "@xyflow/react";
 import type { EditorEdge, EditorNode } from "../types/editor";
-import { defaultConfigFor, type NodeType, type PipelineDefinition } from "../types/pipeline";
+import type { PipelineDefinition } from "../types/pipeline";
 import type { ParsedCsv } from "../lib/csv";
 import { fromPipelineDefinition } from "../lib/serialize";
+import { useCatalogueStore } from "./catalogueStore";
+import { buildDefaultConfig } from "../lib/jsonSchema";
 
 interface EditorState {
   pipelineId: string;
@@ -25,7 +27,7 @@ interface EditorState {
   onNodesChange: (changes: NodeChange<EditorNode>[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
-  addNode: (type: NodeType, position: { x: number; y: number }) => string;
+  addNode: (type: string, position: { x: number; y: number }) => string;
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void;
   setSelectedNode: (id: string | null) => void;
   removeNode: (id: string) => void;
@@ -42,7 +44,7 @@ interface EditorState {
   reset: () => void;
 }
 
-function shortTypeName(type: NodeType): string {
+function shortTypeName(type: string): string {
   return type.split(".")[1] ?? type.split(".")[0];
 }
 
@@ -78,11 +80,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const short = shortTypeName(type);
     const nextCount = (get().idCounters[short] ?? 0) + 1;
     const id = `${short}_${nextCount}`;
+    const schema = useCatalogueStore.getState().entries.find((e) => e.type === type)?.config_schema ?? {};
+    const config = buildDefaultConfig(schema) as Record<string, unknown>;
     const node: EditorNode = {
       id,
       type: "pipelineNode",
       position,
-      data: { nodeType: type, config: defaultConfigFor(type) },
+      data: { nodeType: type, config },
     };
     set({
       nodes: [...get().nodes, node],
