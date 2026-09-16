@@ -1,5 +1,6 @@
-import { getNodeConfigIssues } from "./configValidation";
-import { isKnownNodeType, type PipelineEdge, type PipelineNode } from "../types/pipeline";
+import { getSchemaIssues } from "./schemaValidation";
+import type { NodeCatalogueEntry } from "../types/catalogue";
+import type { PipelineEdge, PipelineNode } from "../types/pipeline";
 
 /** An edge as seen by the editor, retaining which handle it connects into (needed for join's two inputs). */
 export interface GraphEdge extends PipelineEdge {
@@ -59,7 +60,11 @@ export interface ValidationIssue {
   message: string;
 }
 
-export function validatePipeline(nodes: PipelineNode[], edges: PipelineEdge[]): ValidationIssue[] {
+export function validatePipeline(
+  nodes: PipelineNode[],
+  edges: PipelineEdge[],
+  catalogueEntries: NodeCatalogueEntry[] = [],
+): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
   if (nodes.length === 0) {
@@ -104,10 +109,9 @@ export function validatePipeline(nodes: PipelineNode[], edges: PipelineEdge[]): 
       }
     }
 
-    if (isKnownNodeType(node.type)) {
-      for (const message of getNodeConfigIssues(node.type, node.config)) {
-        issues.push({ nodeId: node.id, message: `${node.id}: ${message}` });
-      }
+    const schema = catalogueEntries.find((e) => e.type === node.type)?.config_schema;
+    for (const message of getSchemaIssues(schema, node.config)) {
+      issues.push({ nodeId: node.id, message: `${node.id}: ${message}` });
     }
   }
 

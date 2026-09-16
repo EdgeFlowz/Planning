@@ -3,11 +3,10 @@ import { getOrderedParentIds, type GraphEdge } from "./graph";
 import type {
   AggregateConfig,
   AggregationFunction,
-  BinaryExpression,
   CastConfig,
   DeduplicateConfig,
+  Expression,
   ExpressionConfig,
-  ExpressionOperand,
   FilterConfig,
   JoinConfig,
   PipelineNode,
@@ -44,40 +43,48 @@ function castValue(value: string, type: string): string {
   }
 }
 
-function resolveOperand(operand: ExpressionOperand, row: Record<string, string>): string {
-  return operand.type === "column" ? (row[operand.name] ?? "") : String(operand.value);
+function toBool(value: string | boolean): boolean {
+  return typeof value === "boolean" ? value : value !== "" && value !== "false" && value !== "0";
 }
 
-/** Arithmetic/concat operators — produces a value, used by calculated columns. */
-function evaluateArithmetic(row: Record<string, string>, expr: BinaryExpression): string {
-  const leftRaw = resolveOperand(expr.left, row);
-  const rightRaw = resolveOperand(expr.right, row);
-  if (expr.operator === "concat") return `${leftRaw}${rightRaw}`;
+function toRaw(value: string | boolean): string {
+  return typeof value === "boolean" ? String(value) : value;
+}
 
-  const l = Number(leftRaw);
-  const r = Number(rightRaw);
-  if (Number.isNaN(l) || Number.isNaN(r)) return "";
+/**
+ * Evaluates the declarative expression grammar (backend/app/transformations/expressions.py's
+ * compile_expression, mirrored in types/pipeline.ts's `Expression`) against one row. Operands can
+ * themselves be nested binary expressions — e.g. `and`/`or` combine two comparisons — so this is
+ * recursive rather than a flat two-operand evaluator.
+ */
+function evaluateExpression(expr: Expression, row: Record<string, string>): string | boolean {
+  if (expr.type === "column") return row[expr.name] ?? "";
+  if (expr.type === "literal") return typeof expr.value === "boolean" ? expr.value : String(expr.value);
 
-  switch (expr.operator) {
-    case "+":
-      return String(l + r);
-    case "-":
-      return String(l - r);
-    case "*":
-      return String(l * r);
-    case "/":
-      return r === 0 ? "" : String(l / r);
-    default:
-      return "";
+  const left = evaluateExpression(expr.left, row);
+  const right = evaluateExpression(expr.right, row);
+
+  if (expr.operator === "and") return toBool(left) && toBool(right);
+  if (expr.operator === "or") return toBool(left) || toBool(right);
+
+  const leftRaw = toRaw(left);
+  const rightRaw = toRaw(right);
+
+  if (expr.operator === "+" || expr.operator === "-" || expr.operator === "*" || expr.operator === "/") {
+    const l = Number(leftRaw);
+    const r = Number(rightRaw);
+    if (Number.isNaN(l) || Number.isNaN(r)) return "";
+    switch (expr.operator) {
+      case "+":
+        return String(l + r);
+      case "-":
+        return String(l - r);
+      case "*":
+        return String(l * r);
+      case "/":
+        return r === 0 ? "" : String(l / r);
+    }
   }
-}
-
-/** Comparison operators — produces a predicate, used by filter. */
-function evaluateComparison(row: Record<string, string>, expr: BinaryExpression): boolean {
-  const leftRaw = resolveOperand(expr.left, row);
-  const rightRaw = resolveOperand(expr.right, row);
-
-  if (expr.operator === "contains") return leftRaw.includes(rightRaw);
 
   const l = Number(leftRaw);
   const r = Number(rightRaw);
@@ -160,7 +167,7 @@ export function applyNode(table: ParsedCsv, node: PipelineNode): ParsedCsv {
       if (!cfg.expression) return table;
       return {
         columns: table.columns,
-        rows: table.rows.filter((row) => evaluateComparison(row, cfg.expression)),
+        rows: table.rows.filter((row) => toBool(evaluateExpression(cfg.expression, row))),
       };
     }
 
@@ -269,7 +276,7 @@ export function applyNode(table: ParsedCsv, node: PipelineNode): ParsedCsv {
       const rows = table.rows.map((row) => {
         const out = { ...row };
         for (const spec of cfg.columns) {
-          if (spec.alias) out[spec.alias] = evaluateArithmetic(row, spec.expression);
+          if (spec.alias) out[spec.alias] = toRaw(evaluateExpression(spec.expression, row));
         }
         return out;
       });

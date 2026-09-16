@@ -14,7 +14,8 @@ export const useCatalogueStore = create<CatalogueState>((set, get) => ({
     if (get().status === "loading" || get().status === "loaded") return;
     set({ status: "loading" });
     try {
-      const res = await fetch("/node_catalogue.json");
+      const res = await fetch("/api/nodes");
+      if (!res.ok) throw new Error(`GET /api/nodes -> ${res.status}`);
       const entries = (await res.json()) as NodeCatalogueEntry[];
       set({ entries, status: "loaded" });
     } catch {

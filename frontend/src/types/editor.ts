@@ -1,8 +1,7 @@
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
-import type { NodeType } from "./pipeline";
 
 export interface RFNodeData extends Record<string, unknown> {
-  nodeType: NodeType;
+  nodeType: string;
   config: Record<string, unknown>;
 }
 
