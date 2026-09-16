@@ -7,6 +7,9 @@ from pydantic import BaseModel
 
 class CsvSourceConfig(BaseModel):
     path: str
+    delimiter: str = ","
+    header: bool = True
+
 
 
 class CsvSinkConfig(BaseModel):

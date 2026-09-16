@@ -12,6 +12,8 @@ class JoinTransform:
         category="transformation",
         version=1,
         config_schema=JoinConfig.model_json_schema(),
+        input_ports=("left", "right"),
+        output_ports=("output",)
     )
 
     def apply(self, inputs: list[pl.LazyFrame], config: dict) -> pl.LazyFrame:
