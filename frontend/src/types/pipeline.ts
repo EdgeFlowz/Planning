@@ -99,12 +99,14 @@ export type BinaryExpr = { type: "binary_operation"; operator: BinaryOperator; l
 export type Expression = ColumnExpr | LiteralExpr | BinaryExpr;
 
 export interface FilterConfig {
-  expression: Expression;
+  // Root must be an operation — a bare column or fixed value isn't a usable filter predicate.
+  expression: BinaryExpr;
 }
 
 export interface ExpressionColumnSpec {
   alias: string;
-  expression: Expression;
+  // Root must be an operation — a bare column copy or constant belongs in select/rename instead.
+  expression: BinaryExpr;
 }
 
 export interface ExpressionConfig {

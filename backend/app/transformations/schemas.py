@@ -50,7 +50,8 @@ class SelectConfig(BaseModel):
 
 
 class FilterConfig(BaseModel):
-    expression: Expression
+    # Root must be an operation — a bare column or fixed value isn't a usable filter predicate.
+    expression: BinaryExpr
 
 
 class RenameConfig(BaseModel):
@@ -109,7 +110,8 @@ class DeduplicateConfig(BaseModel):
 
 class ExpressionColumnSpec(BaseModel):
     alias: str
-    expression: Expression
+    # Root must be an operation — a bare column copy or constant belongs in select/rename instead.
+    expression: BinaryExpr
 
 
 class ExpressionConfig(BaseModel):
