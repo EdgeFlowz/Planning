@@ -11,8 +11,8 @@ from app.domain.models import NodeMetadata
 
 class Transform(Protocol):
     metadata: NodeMetadata
-    
-    def apply(self, inputs: list[pl.LazyFrame], config: dict) -> pl.LazyFrame: ...
+
+    def apply(self, inputs: list[pl.LazyFrame], config: dict) -> pl.LazyFrame | dict[str, pl.LazyFrame]: ...
 
 
 def single_input(inputs: list[pl.LazyFrame]) -> pl.LazyFrame:

@@ -18,6 +18,7 @@ def list_node_types() -> list[NodeTypeDefinition]:
 class NodeResult(BaseModel):
     node_id: str
     node_type: str
+    port: str
     rows: int
     columns: list[str]
 
@@ -42,14 +43,19 @@ def run_pipeline(pipeline: PipelineDefinition) -> PipelineRunResult:
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    node_results = [
-        NodeResult(
-            node_id=node.id,
-            node_type=node.type,
-            rows=(frame := outputs[node.id].collect()).height,
-            columns=frame.columns,
+    node_types = {node.id: node.type for node in pipeline.nodes}
+    node_results = []
+    for key, lazy_frame in outputs.items():
+        node_id, _, port = key.partition(":")
+        frame = lazy_frame.collect()
+        node_results.append(
+            NodeResult(
+                node_id=node_id,
+                node_type=node_types[node_id],
+                port=port or "output",
+                rows=frame.height,
+                columns=frame.columns,
+            )
         )
-        for node in pipeline.nodes
-    ]
 
     return PipelineRunResult(pipeline_id=pipeline.pipeline_id, node_results=node_results)

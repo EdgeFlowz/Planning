@@ -10,6 +10,8 @@ export function PipelineNodeView({ id, data, selected }: NodeProps<EditorNode>) 
   // Join is the one node shape the config schema can't describe: it needs two independent
   // upstream inputs (left/right), which is port topology, not config shape.
   const isJoin = data.nodeType === "transform.join";
+  // Conditional is the mirror image: one input, but two named outputs (true/false branches).
+  const isConditional = data.nodeType === "transform.conditional";
   const isSource = entry?.category === "source";
   const issues = entry ? getSchemaIssues(entry.config_schema, data.config) : [];
 
@@ -40,7 +42,18 @@ export function PipelineNodeView({ id, data, selected }: NodeProps<EditorNode>) 
       <div className="pipeline-node-body">
         {entry ? summarizeConfig(entry.config_schema, data.config) : "Unknown node type"}
       </div>
-      <Handle type="source" position={Position.Bottom} />
+      {isConditional ? (
+        <>
+          <Handle type="source" position={Position.Bottom} id="true" className="handle-left" />
+          <Handle type="source" position={Position.Bottom} id="false" className="handle-right" />
+          <div className="pipeline-node-handle-labels pipeline-node-handle-labels-bottom">
+            <span>T</span>
+            <span>F</span>
+          </div>
+        </>
+      ) : (
+        <Handle type="source" position={Position.Bottom} />
+      )}
     </div>
   );
 }

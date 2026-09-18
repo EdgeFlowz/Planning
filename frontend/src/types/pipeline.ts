@@ -12,6 +12,10 @@ export interface PipelineNode {
 export interface PipelineEdge {
   source: string;
   target: string;
+  // Target/source port names (React Flow's targetHandle/sourceHandle) — only meaningful for
+  // multi-port nodes (transform.join's left/right inputs, transform.conditional's true/false outputs).
+  input?: string | null;
+  output?: string | null;
 }
 
 export interface PipelineDefinition {
@@ -111,4 +115,9 @@ export interface ExpressionColumnSpec {
 
 export interface ExpressionConfig {
   columns: ExpressionColumnSpec[];
+}
+
+export interface ConditionalConfig {
+  // Root must be an operation, same rule as FilterConfig — this decides the true/false branch.
+  condition: BinaryExpr;
 }

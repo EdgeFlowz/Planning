@@ -8,17 +8,18 @@ from __future__ import annotations
 
 import polars as pl
 
+from app.domain.models import NodeMetadata
 from app.transformations.aggregate import AggregateTransform
 from app.transformations.base import Transform
 from app.transformations.calculate import CalculateTransform
 from app.transformations.cast import CastTransform
+from app.transformations.conditional import ConditionalTransform
 from app.transformations.deduplicate import DeduplicateTransform
 from app.transformations.filter import FilterTransform
 from app.transformations.join import JoinTransform
 from app.transformations.rename import RenameTransform
 from app.transformations.select import SelectTransform
 from app.transformations.sort import SortTransform
-from app.domain.models import NodeMetadata
 
 TRANSFORMS: dict[str, Transform] = {
     "transform.select": SelectTransform(),
@@ -30,6 +31,7 @@ TRANSFORMS: dict[str, Transform] = {
     "transform.sort": SortTransform(),
     "transform.deduplicate": DeduplicateTransform(),
     "transform.expression": CalculateTransform(),
+    "transform.conditional": ConditionalTransform(),
 }
 
 
@@ -43,6 +45,10 @@ def get_transform_metadata(node_type: str) -> NodeMetadata:
     return get_transform(node_type).metadata
 
 
-def apply_transform(node_type: str, inputs: list[pl.LazyFrame], config: dict) -> pl.LazyFrame:
-    """Apply the transform registered for `node_type` to the given upstream frame(s)."""
+def apply_transform(node_type: str, inputs: list[pl.LazyFrame], config: dict) -> pl.LazyFrame | dict[str, pl.LazyFrame]:
+    """Apply the transform registered for `node_type` to the given upstream frame(s).
+
+    Returns a single LazyFrame for ordinary single-output transforms, or a dict of named
+    LazyFrames (keyed by output port) for a multi-output transform like transform.conditional.
+    """
     return get_transform(node_type).apply(inputs, config)

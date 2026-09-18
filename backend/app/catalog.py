@@ -18,6 +18,8 @@ class NodeTypeDefinition(BaseModel):
     display_name: str
     implemented: bool
     config_schema: dict
+    input_ports: tuple[str, ...] = ()
+    output_ports: tuple[str, ...] = ()
 
 
 def _transform_entry(node_type: str) -> NodeTypeDefinition:
@@ -28,6 +30,8 @@ def _transform_entry(node_type: str) -> NodeTypeDefinition:
         display_name=metadata.name,
         implemented=True,
         config_schema=metadata.config_schema,
+        input_ports=metadata.input_ports,
+        output_ports=metadata.output_ports,
     )
 
 
@@ -39,6 +43,8 @@ def _source_entry(node_type: str) -> NodeTypeDefinition:
         display_name=metadata.name,
         implemented=True,
         config_schema=metadata.config_schema,
+        input_ports=metadata.input_ports,
+        output_ports=metadata.output_ports,
     )
 
 
@@ -50,10 +56,18 @@ def _sink_entry(node_type: str) -> NodeTypeDefinition:
         display_name=metadata.name,
         implemented=True,
         config_schema=metadata.config_schema,
+        input_ports=metadata.input_ports,
+        output_ports=metadata.output_ports,
     )
 
 
-def _unimplemented_entry(node_type: str, category: NodeCategory, display_name: str) -> NodeTypeDefinition:
+def _unimplemented_entry(
+    node_type: str,
+    category: NodeCategory,
+    display_name: str,
+    input_ports: tuple[str, ...] = (),
+    output_ports: tuple[str, ...] = (),
+) -> NodeTypeDefinition:
     # No connector implementation registered yet for this node type (see app/connectors).
     return NodeTypeDefinition(
         type=node_type,
@@ -61,13 +75,15 @@ def _unimplemented_entry(node_type: str, category: NodeCategory, display_name: s
         display_name=display_name,
         implemented=False,
         config_schema={},
+        input_ports=input_ports,
+        output_ports=output_ports,
     )
 
 
 NODE_CATALOG: list[NodeTypeDefinition] = [
     _source_entry("source.csv"),
     _source_entry("source.parquet"),
-    _unimplemented_entry("source.sql", "source", "SQL Source"),
+    _unimplemented_entry("source.sql", "source", "SQL Source", output_ports=("output",)),
     _transform_entry("transform.select"),
     _transform_entry("transform.filter"),
     _transform_entry("transform.rename"),
@@ -77,9 +93,10 @@ NODE_CATALOG: list[NodeTypeDefinition] = [
     _transform_entry("transform.sort"),
     _transform_entry("transform.deduplicate"),
     _transform_entry("transform.expression"),
+    _transform_entry("transform.conditional"),
     _sink_entry("sink.csv"),
     _sink_entry("sink.parquet"),
-    _unimplemented_entry("sink.sql", "sink", "SQL Sink"),
+    _unimplemented_entry("sink.sql", "sink", "SQL Sink", input_ports=("input",)),
 ]
 
 
