@@ -26,7 +26,14 @@ export function toPipelineDefinition(
     })),
     edges: edges
       .filter((e) => liveNodeIds.has(e.source) && liveNodeIds.has(e.target))
-      .map((e) => ({ source: e.source, target: e.target })),
+      .map((e) => ({
+        source: e.source,
+        target: e.target,
+        // Only meaningful for multi-port nodes (join's left/right inputs, conditional's
+        // true/false outputs) — omitted entirely for the common single-port case.
+        ...(e.targetHandle ? { input: e.targetHandle } : {}),
+        ...(e.sourceHandle ? { output: e.sourceHandle } : {}),
+      })),
   };
 }
 
@@ -51,6 +58,8 @@ export function fromPipelineDefinition(definition: PipelineDefinition): {
     id: `${e.source}->${e.target}`,
     source: e.source,
     target: e.target,
+    targetHandle: e.input ?? null,
+    sourceHandle: e.output ?? null,
   }));
 
   return { nodes, edges };

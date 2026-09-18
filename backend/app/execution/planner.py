@@ -35,8 +35,14 @@ def topological_order(pipeline: PipelineDefinition) -> list[str]:
 
 
 def predecessors(pipeline: PipelineDefinition) -> dict[str, list[str]]:
-    """Map each node id to the ids of nodes that feed directly into it, in edge order."""
+    """Map each node id to the output keys (see execution/executor.py) feeding it, in edge order.
+
+    An output key is the producing node's id alone for its default output port, or
+    "node_id:port" when the edge is drawn from a specific named port (e.g. transform.conditional's
+    "true"/"false" branches).
+    """
     result: dict[str, list[str]] = {node.id: [] for node in pipeline.nodes}
     for edge in pipeline.edges:
-        result[edge.target].append(edge.source)
+        key = f"{edge.source}:{edge.output}" if edge.output else edge.source
+        result[edge.target].append(key)
     return result

@@ -25,6 +25,9 @@ class Edge(BaseModel):
     source: str
     target: str
     input: str | None = None
+    # Which of the source node's output ports this edge draws from (e.g. transform.conditional's
+    # "true"/"false"); None means the node's sole/default output port.
+    output: str | None = None
     condition: Condition | None = None
 
 

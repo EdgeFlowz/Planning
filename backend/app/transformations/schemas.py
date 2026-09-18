@@ -116,3 +116,9 @@ class ExpressionColumnSpec(BaseModel):
 
 class ExpressionConfig(BaseModel):
     columns: list[ExpressionColumnSpec]
+
+
+class ConditionalConfig(BaseModel):
+    # Same root-must-be-an-operation rule as FilterConfig — this is the predicate that splits
+    # rows between the node's "true" and "false" output ports.
+    condition: BinaryExpr

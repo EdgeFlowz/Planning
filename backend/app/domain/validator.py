@@ -19,6 +19,7 @@ SUPPORTED_NODE_TYPES = {
     "transform.sort",
     "transform.deduplicate",
     "transform.expression",
+    "transform.conditional",
     "sink.parquet",
     "sink.csv",
     "sink.sql",

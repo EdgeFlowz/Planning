@@ -1,9 +1,10 @@
 import type { ParsedCsv } from "./csv";
-import { getOrderedParentIds, type GraphEdge } from "./graph";
+import { getOrderedIncomingEdges, type GraphEdge } from "./graph";
 import type {
   AggregateConfig,
   AggregationFunction,
   CastConfig,
+  ConditionalConfig,
   DeduplicateConfig,
   Expression,
   ExpressionConfig,
@@ -151,7 +152,22 @@ function computeAggregation(rows: Record<string, string>[], column: string, fn: 
   }
 }
 
-/** Applies a single node's operation to its (already computed) upstream table. Not used for transform.join. */
+/** Splits a table into "true"/"false" branches per transform.conditional's predicate. */
+export function applyConditional(table: ParsedCsv, config: ConditionalConfig): { true: ParsedCsv; false: ParsedCsv } {
+  if (!config.condition) return { true: table, false: { columns: table.columns, rows: [] } };
+  const trueRows: Record<string, string>[] = [];
+  const falseRows: Record<string, string>[] = [];
+  for (const row of table.rows) {
+    (toBool(evaluateExpression(config.condition, row)) ? trueRows : falseRows).push(row);
+  }
+  return {
+    true: { columns: table.columns, rows: trueRows },
+    false: { columns: table.columns, rows: falseRows },
+  };
+}
+
+/** Applies a single node's operation to its (already computed) upstream table. Not used for
+ * transform.join or transform.conditional — both need more than one output/input table. */
 export function applyNode(table: ParsedCsv, node: PipelineNode): ParsedCsv {
   switch (node.type) {
     case "source.csv":
@@ -368,8 +384,10 @@ export function applyJoin(left: ParsedCsv, right: ParsedCsv, config: JoinConfig)
 
 /**
  * Recursively computes the output table for any node in the graph, walking up through its
- * upstream inputs (one for most node types, two — left/right — for transform.join).
- * Memoized per call so shared upstream nodes aren't recomputed.
+ * upstream inputs (one for most node types, two — left/right — for transform.join). A node
+ * with multiple named outputs (transform.conditional's "true"/"false" branches) is resolved
+ * per the connecting edge's sourceHandle; asked for directly (no edge context) it defaults to
+ * its "true" branch. Memoized per call so shared upstream nodes aren't recomputed.
  */
 export function computeNodeOutput(
   nodeId: string,
@@ -378,7 +396,30 @@ export function computeNodeOutput(
   sourceTables: Record<string, ParsedCsv>,
   cache: Map<string, ParsedCsv | null> = new Map(),
 ): ParsedCsv | null {
-  if (cache.has(nodeId)) return cache.get(nodeId) ?? null;
+  return computeNodeBranch(nodeId, undefined, nodes, edges, sourceTables, cache);
+}
+
+function resolveParent(
+  edge: GraphEdge | undefined,
+  nodes: PipelineNode[],
+  edges: GraphEdge[],
+  sourceTables: Record<string, ParsedCsv>,
+  cache: Map<string, ParsedCsv | null>,
+): ParsedCsv | null {
+  if (!edge) return null;
+  return computeNodeBranch(edge.source, edge.sourceHandle ?? undefined, nodes, edges, sourceTables, cache);
+}
+
+function computeNodeBranch(
+  nodeId: string,
+  branch: string | undefined,
+  nodes: PipelineNode[],
+  edges: GraphEdge[],
+  sourceTables: Record<string, ParsedCsv>,
+  cache: Map<string, ParsedCsv | null>,
+): ParsedCsv | null {
+  const cacheKey = branch ? `${nodeId}:${branch}` : nodeId;
+  if (cache.has(cacheKey)) return cache.get(cacheKey) ?? null;
   const node = nodes.find((n) => n.id === nodeId);
   if (!node) return null;
 
@@ -386,16 +427,24 @@ export function computeNodeOutput(
   if (node.type === "source.csv") {
     result = sourceTables[nodeId] ?? null;
   } else if (node.type === "transform.join") {
-    const [leftId, rightId] = getOrderedParentIds(nodeId, edges);
-    const left = leftId ? computeNodeOutput(leftId, nodes, edges, sourceTables, cache) : null;
-    const right = rightId ? computeNodeOutput(rightId, nodes, edges, sourceTables, cache) : null;
+    const [leftEdge, rightEdge] = getOrderedIncomingEdges(nodeId, edges);
+    const left = resolveParent(leftEdge, nodes, edges, sourceTables, cache);
+    const right = resolveParent(rightEdge, nodes, edges, sourceTables, cache);
     result = left && right ? applyJoin(left, right, node.config as unknown as JoinConfig) : null;
+  } else if (node.type === "transform.conditional") {
+    const [inputEdge] = getOrderedIncomingEdges(nodeId, edges);
+    const input = resolveParent(inputEdge, nodes, edges, sourceTables, cache);
+    const branches = input ? applyConditional(input, node.config as unknown as ConditionalConfig) : null;
+    // Both branches share one upstream computation, so cache them together regardless of which was asked for.
+    cache.set(`${nodeId}:true`, branches?.true ?? null);
+    cache.set(`${nodeId}:false`, branches?.false ?? null);
+    return branches?.[branch === "false" ? "false" : "true"] ?? null;
   } else {
-    const [parentId] = getOrderedParentIds(nodeId, edges);
-    const parentTable = parentId ? computeNodeOutput(parentId, nodes, edges, sourceTables, cache) : null;
+    const [parentEdge] = getOrderedIncomingEdges(nodeId, edges);
+    const parentTable = resolveParent(parentEdge, nodes, edges, sourceTables, cache);
     result = parentTable ? applyNode(parentTable, node) : null;
   }
 
-  cache.set(nodeId, result);
+  cache.set(cacheKey, result);
   return result;
 }

@@ -2,9 +2,11 @@ import { getSchemaIssues } from "./schemaValidation";
 import type { NodeCatalogueEntry } from "../types/catalogue";
 import type { PipelineEdge, PipelineNode } from "../types/pipeline";
 
-/** An edge as seen by the editor, retaining which handle it connects into (needed for join's two inputs). */
+/** An edge as seen by the editor, retaining which handle it connects into/out of (needed for
+ * join's two inputs and conditional's two outputs). */
 export interface GraphEdge extends PipelineEdge {
   targetHandle?: string | null;
+  sourceHandle?: string | null;
 }
 
 export function getIncomingEdges(nodeId: string, edges: GraphEdge[]): GraphEdge[] {
@@ -16,11 +18,16 @@ export function getIncomingEdges(nodeId: string, edges: GraphEdge[]): GraphEdge[
  * For single-input nodes this is just `[parentId]` (or `[]` if unconnected).
  */
 export function getOrderedParentIds(nodeId: string, edges: GraphEdge[]): string[] {
+  return getOrderedIncomingEdges(nodeId, edges).map((e) => e.source);
+}
+
+/** Same ordering as `getOrderedParentIds`, but keeps each edge's `sourceHandle` so callers can
+ * tell which output port (e.g. a conditional's "true"/"false" branch) a parent fed through. */
+export function getOrderedIncomingEdges(nodeId: string, edges: GraphEdge[]): GraphEdge[] {
   const rank = (handle?: string | null) => (handle === "right" ? 1 : 0);
   return getIncomingEdges(nodeId, edges)
     .slice()
-    .sort((a, b) => rank(a.targetHandle) - rank(b.targetHandle))
-    .map((e) => e.source);
+    .sort((a, b) => rank(a.targetHandle) - rank(b.targetHandle));
 }
 
 export function detectCycle(nodes: PipelineNode[], edges: PipelineEdge[]): boolean {

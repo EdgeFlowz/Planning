@@ -568,6 +568,11 @@
   pointer-events: none;
 }
 
+.pipeline-node-handle-labels-bottom {
+  top: auto;
+  bottom: -1.1rem;
+}
+
 .handle-left {
   left: 30% !important;
 }

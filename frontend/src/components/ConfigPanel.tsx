@@ -55,7 +55,7 @@ export function ConfigPanel() {
     [nodes],
   );
   const graphEdges: GraphEdge[] = useMemo(
-    () => edges.map((e) => ({ source: e.source, target: e.target, targetHandle: e.targetHandle })),
+    () => edges.map((e) => ({ source: e.source, target: e.target, targetHandle: e.targetHandle, sourceHandle: e.sourceHandle })),
     [edges],
   );
 
