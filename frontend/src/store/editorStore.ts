@@ -3,6 +3,7 @@ import {
   addEdge,
   applyEdgeChanges,
   applyNodeChanges,
+  reconnectEdge as applyReconnect,
   type Connection,
   type EdgeChange,
   type NodeChange,
@@ -10,9 +11,40 @@ import {
 import type { EditorEdge, EditorNode } from "../types/editor";
 import type { PipelineDefinition } from "../types/pipeline";
 import type { ParsedCsv } from "../lib/csv";
-import { fromPipelineDefinition } from "../lib/serialize";
+import { fromPipelineDefinition, PIPELINE_EDGE_TYPE } from "../lib/serialize";
 import { useCatalogueStore } from "./catalogueStore";
 import { buildDefaultConfig } from "../lib/jsonSchema";
+import { portsForEntry } from "../lib/ports";
+import { canConnect } from "../lib/connectionRules";
+
+export type FlowDirection = "vertical" | "horizontal";
+
+const DIRECTION_STORAGE_KEY = "pipeline-flow-direction";
+const SNAP_STORAGE_KEY = "pipeline-proximity-snap";
+
+function loadDirection(): FlowDirection {
+  try {
+    return localStorage.getItem(DIRECTION_STORAGE_KEY) === "horizontal" ? "horizontal" : "vertical";
+  } catch {
+    return "vertical";
+  }
+}
+
+function loadSnapEnabled(): boolean {
+  try {
+    return localStorage.getItem(SNAP_STORAGE_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+function persist(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore — persistence is a nice-to-have, not a requirement
+  }
+}
 
 interface EditorState {
   pipelineId: string;
@@ -22,11 +54,21 @@ interface EditorState {
   /** Parsed CSV data keyed by source.csv node id. Editor-only; never serialized into the pipeline JSON. */
   sourceTables: Record<string, ParsedCsv>;
   idCounters: Record<string, number>;
+  /** Which way the pipeline reads on screen. Editor-only; never serialized. */
+  flowDirection: FlowDirection;
+  /** Whether dragging a node near another one auto-connects them. */
+  snapEnabled: boolean;
 
   setPipelineId: (id: string) => void;
   onNodesChange: (changes: NodeChange<EditorNode>[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
+  removeEdge: (id: string) => void;
+  reconnectEdge: (oldEdge: EditorEdge, connection: Connection) => void;
+  /** Drops `edgeId` and wires a freshly added node of `type` into the gap it leaves. */
+  insertNodeOnEdge: (edgeId: string, type: string, position: { x: number; y: number }) => string | null;
+  setFlowDirection: (direction: FlowDirection) => void;
+  setSnapEnabled: (enabled: boolean) => void;
   addNode: (type: string, position: { x: number; y: number }) => string;
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void;
   setSelectedNode: (id: string | null) => void;
@@ -57,8 +99,27 @@ const initial = {
   idCounters: {} as Record<string, number>,
 };
 
+/** Builds a node without committing it, so callers that also add edges can do both in one `set`. */
+function makeNode(
+  type: string,
+  position: { x: number; y: number },
+  idCounters: Record<string, number>,
+): { node: EditorNode; idCounters: Record<string, number> } {
+  const short = shortTypeName(type);
+  const nextCount = (idCounters[short] ?? 0) + 1;
+  const id = `${short}_${nextCount}`;
+  const schema = useCatalogueStore.getState().entries.find((e) => e.type === type)?.config_schema ?? {};
+  const config = buildDefaultConfig(schema) as Record<string, unknown>;
+  return {
+    node: { id, type: "pipelineNode", position, data: { nodeType: type, config } },
+    idCounters: { ...idCounters, [short]: nextCount },
+  };
+}
+
 export const useEditorStore = create<EditorState>((set, get) => ({
   ...initial,
+  flowDirection: loadDirection(),
+  snapEnabled: loadSnapEnabled(),
 
   setPipelineId: (id) => set({ pipelineId: id }),
 
@@ -67,33 +128,96 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   onEdgesChange: (changes) => set({ edges: applyEdgeChanges(changes, get().edges) }),
 
   onConnect: (connection) => {
-    if (!connection.source || !connection.target) return;
+    const { nodes, edges } = get();
+    const entries = useCatalogueStore.getState().entries;
+    // Every interactive path (proximity snap, handle drag, palette drop) already gates on
+    // `canConnect`; re-checking here keeps a programmatic caller from creating an illegal edge.
+    const verdict = canConnect(connection, { nodes, edges, entries });
+    if (!verdict.ok) return;
+
     // Enforce single-input transforms: replace any existing edge into the same target handle.
     // Join nodes have two handles ("left"/"right"), so a new "left" connection only replaces an existing "left" one.
-    const withoutExisting = get().edges.filter(
-      (e) => !(e.target === connection.target && (e.targetHandle ?? null) === (connection.targetHandle ?? null)),
-    );
-    set({ edges: addEdge(connection, withoutExisting) });
+    const withoutExisting = verdict.replacesEdgeId
+      ? edges.filter((e) => e.id !== verdict.replacesEdgeId)
+      : edges;
+    set({ edges: addEdge({ ...connection, type: PIPELINE_EDGE_TYPE }, withoutExisting) });
+  },
+
+  removeEdge: (id) => set({ edges: get().edges.filter((e) => e.id !== id) }),
+
+  reconnectEdge: (oldEdge, connection) => {
+    const { nodes, edges } = get();
+    const entries = useCatalogueStore.getState().entries;
+    // Judge the new edge against the graph *without* the one being moved, so re-pointing an
+    // edge at the same target isn't rejected as a duplicate of itself.
+    const without = edges.filter((e) => e.id !== oldEdge.id);
+    const verdict = canConnect(connection, { nodes, edges: without, entries });
+    if (!verdict.ok) return;
+
+    const displaced = verdict.replacesEdgeId
+      ? edges.filter((e) => e.id !== verdict.replacesEdgeId)
+      : edges;
+    set({ edges: applyReconnect(oldEdge, connection, displaced) });
+  },
+
+  insertNodeOnEdge: (edgeId, type, position) => {
+    const { nodes, edges, idCounters } = get();
+    const entries = useCatalogueStore.getState().entries;
+    const edge = edges.find((e) => e.id === edgeId);
+    if (!edge) return null;
+
+    const { node, idCounters: nextCounters } = makeNode(type, position, idCounters);
+    const ports = portsForEntry(entries.find((e) => e.type === type));
+    if (ports.inputs.length === 0 || ports.outputs.length === 0) return null;
+
+    const inHandle = ports.inputs.length > 1 ? ports.inputs[0] : null;
+    const outHandle = ports.outputs.length > 1 ? ports.outputs[0] : null;
+    const remaining = edges.filter((e) => e.id !== edgeId);
+
+    const upstream: EditorEdge = {
+      id: `${edge.source}-${node.id}-${inHandle ?? "in"}`,
+      type: PIPELINE_EDGE_TYPE,
+      source: edge.source,
+      sourceHandle: edge.sourceHandle ?? null,
+      target: node.id,
+      targetHandle: inHandle,
+    };
+    const downstream: EditorEdge = {
+      id: `${node.id}-${edge.target}-${edge.targetHandle ?? "in"}`,
+      type: PIPELINE_EDGE_TYPE,
+      source: node.id,
+      sourceHandle: outHandle,
+      target: edge.target,
+      targetHandle: edge.targetHandle ?? null,
+    };
+
+    set({
+      nodes: [...nodes, node],
+      edges: [...remaining, upstream, downstream],
+      idCounters: nextCounters,
+      selectedNodeId: node.id,
+    });
+    return node.id;
+  },
+
+  setFlowDirection: (direction) => {
+    persist(DIRECTION_STORAGE_KEY, direction);
+    set({ flowDirection: direction });
+  },
+
+  setSnapEnabled: (enabled) => {
+    persist(SNAP_STORAGE_KEY, enabled ? "on" : "off");
+    set({ snapEnabled: enabled });
   },
 
   addNode: (type, position) => {
-    const short = shortTypeName(type);
-    const nextCount = (get().idCounters[short] ?? 0) + 1;
-    const id = `${short}_${nextCount}`;
-    const schema = useCatalogueStore.getState().entries.find((e) => e.type === type)?.config_schema ?? {};
-    const config = buildDefaultConfig(schema) as Record<string, unknown>;
-    const node: EditorNode = {
-      id,
-      type: "pipelineNode",
-      position,
-      data: { nodeType: type, config },
-    };
+    const { node, idCounters } = makeNode(type, position, get().idCounters);
     set({
       nodes: [...get().nodes, node],
-      idCounters: { ...get().idCounters, [short]: nextCount },
-      selectedNodeId: id,
+      idCounters,
+      selectedNodeId: node.id,
     });
-    return id;
+    return node.id;
   },
 
   updateNodeConfig: (id, config) => {
@@ -131,7 +255,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   loadPipeline: (definition, tables) => {
-    const { nodes, edges } = fromPipelineDefinition(definition);
+    const { nodes, edges } = fromPipelineDefinition(definition, get().flowDirection);
     const idCounters: Record<string, number> = {};
     for (const n of nodes) {
       const short = shortTypeName(n.data.nodeType);
