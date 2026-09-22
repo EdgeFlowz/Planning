@@ -43,7 +43,11 @@ def _source_entry(node_type: str) -> NodeTypeDefinition:
         display_name=metadata.name,
         implemented=True,
         config_schema=metadata.config_schema,
-        input_ports=metadata.input_ports,
+        # A source reads from outside the pipeline, so it has no inbound port regardless of what
+        # its metadata says — NodeMetadata.input_ports defaults to ("input",) for the benefit of
+        # transforms, and connectors don't override it. Publishing that default would contradict
+        # the validator, which rejects any edge into a source node.
+        input_ports=(),
         output_ports=metadata.output_ports,
     )
 
@@ -57,7 +61,8 @@ def _sink_entry(node_type: str) -> NodeTypeDefinition:
         implemented=True,
         config_schema=metadata.config_schema,
         input_ports=metadata.input_ports,
-        output_ports=metadata.output_ports,
+        # Mirror of the source case: a sink terminates the pipeline, so nothing reads from it.
+        output_ports=(),
     )
 
 

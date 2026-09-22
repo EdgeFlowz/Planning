@@ -13,6 +13,10 @@ export function Toolbar() {
   const edges = useEditorStore((s) => s.edges);
   const loadPipeline = useEditorStore((s) => s.loadPipeline);
   const reset = useEditorStore((s) => s.reset);
+  const flowDirection = useEditorStore((s) => s.flowDirection);
+  const setFlowDirection = useEditorStore((s) => s.setFlowDirection);
+  const snapEnabled = useEditorStore((s) => s.snapEnabled);
+  const setSnapEnabled = useEditorStore((s) => s.setSnapEnabled);
   const catalogueEntries = useCatalogueStore((s) => s.entries);
 
   const definition = useMemo(
@@ -55,6 +59,21 @@ export function Toolbar() {
       </div>
 
       <div className="toolbar-actions">
+        <button
+          className={`toolbar-toggle${snapEnabled ? " on" : ""}`}
+          onClick={() => setSnapEnabled(!snapEnabled)}
+          aria-pressed={snapEnabled}
+          title="Connect nodes automatically when dragged near each other"
+        >
+          🧲 Snap
+        </button>
+        <button
+          className="toolbar-toggle"
+          onClick={() => setFlowDirection(flowDirection === "vertical" ? "horizontal" : "vertical")}
+          title={`Flow runs ${flowDirection === "vertical" ? "top to bottom" : "left to right"} — click to switch`}
+        >
+          {flowDirection === "vertical" ? "⇅ Vertical" : "⇄ Horizontal"}
+        </button>
         <button onClick={handleLoadExample}>Load Example</button>
         <button onClick={reset}>Reset</button>
         <button className="primary-button" onClick={handleExport}>

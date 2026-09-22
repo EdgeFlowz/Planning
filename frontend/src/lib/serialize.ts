@@ -37,8 +37,20 @@ export function toPipelineDefinition(
   };
 }
 
-/** Simple vertical auto-layout for nodes loaded from a definition that has no positions. */
-export function fromPipelineDefinition(definition: PipelineDefinition): {
+/**
+ * The custom edge type (components/PipelineEdge.tsx) every edge on the canvas uses.
+ *
+ * `defaultEdgeOptions` on <ReactFlow> only reaches edges created through `onConnect`, so edges
+ * built by hand here must set it themselves or loaded pipelines render plain edges with no
+ * hover-to-delete affordance.
+ */
+export const PIPELINE_EDGE_TYPE = "pipeline";
+
+/** Simple auto-layout for nodes loaded from a definition that has no positions. */
+export function fromPipelineDefinition(
+  definition: PipelineDefinition,
+  direction: "vertical" | "horizontal" = "vertical",
+): {
   nodes: EditorNode[];
   edges: EditorEdge[];
 } {
@@ -49,13 +61,19 @@ export function fromPipelineDefinition(definition: PipelineDefinition): {
     return {
       id: n.id,
       type: "pipelineNode",
-      position: { x: 100, y: 80 + index * 140 },
+      // Column spacing must clear the widest a node can get (max-width 260px in App.css),
+      // or a wide node's output handle lands past the next node's input.
+      position:
+        direction === "vertical"
+          ? { x: 100, y: 80 + index * 140 }
+          : { x: 80 + index * 330, y: 120 },
       data: { nodeType: n.type, config: { ...defaults, ...n.config } },
     };
   });
 
   const edges: EditorEdge[] = definition.edges.map((e) => ({
     id: `${e.source}->${e.target}`,
+    type: PIPELINE_EDGE_TYPE,
     source: e.source,
     target: e.target,
     targetHandle: e.input ?? null,
