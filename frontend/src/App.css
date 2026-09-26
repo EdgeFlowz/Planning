@@ -843,3 +843,129 @@
   color: #475569;
   word-break: break-word;
 }
+
+/* File Upload Widget */
+.file-upload-widget {
+  margin: 0.5rem 0;
+}
+
+.file-upload-label {
+  display: block;
+  position: relative;
+}
+
+.file-upload-input {
+  display: none;
+}
+
+.file-upload-button {
+  display: inline-block;
+  padding: 0.5rem 0.75rem;
+  background: #3b82f6;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.file-upload-button:hover {
+  background: #2563eb;
+}
+
+.file-upload-input:disabled + .file-upload-button {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.file-upload-success {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #059669;
+}
+
+.file-upload-success code {
+  background: #ecfdf5;
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+  font-family: monospace;
+  font-size: 0.75rem;
+}
+
+.file-upload-error {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #dc2626;
+}
+
+/* Execution Results in Toolbar */
+.execution-error {
+  margin-top: 0.75rem;
+  padding: 0.6rem;
+  background: #fee2e2;
+  color: #991b1b;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  width: 100%;
+}
+
+.execution-results {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #f0fdf4;
+  border-radius: 4px;
+  border-left: 3px solid #16a34a;
+  width: 100%;
+}
+
+.execution-results h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  color: #166534;
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.5rem;
+}
+
+.result-card {
+  background: #fff;
+  padding: 0.5rem;
+  border-radius: 3px;
+  border: 1px solid #dcfce7;
+  font-size: 0.75rem;
+}
+
+.result-node {
+  font-weight: 600;
+  color: #15803d;
+  margin-bottom: 0.3rem;
+}
+
+.result-node small {
+  font-weight: normal;
+  color: #4b5563;
+  font-size: 0.65rem;
+}
+
+.result-port {
+  font-size: 0.7rem;
+  color: #7c2d12;
+  background: #fed7aa;
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+  margin-bottom: 0.2rem;
+}
+
+.result-stat {
+  color: #059669;
+  font-weight: 600;
+}
+
+.result-columns {
+  color: #606f7b;
+  font-size: 0.7rem;
+}
