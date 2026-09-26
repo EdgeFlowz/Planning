@@ -1,10 +1,17 @@
-from fastapi import FastAPI, HTTPException
+import uuid
+from pathlib import Path
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.catalog import NODE_CATALOG, NodeTypeDefinition
 from app.domain.models import PipelineDefinition
 from app.domain.validator import PipelineValidationError
 from app.execution.executor import execute_pipeline
+
+# Create uploads directory for temporary file storage
+UPLOAD_DIR = Path("./uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="Pipeline Builder API")
 
@@ -13,6 +20,34 @@ app = FastAPI(title="Pipeline Builder API")
 def list_node_types() -> list[NodeTypeDefinition]:
     """Return every node type the frontend can offer, with its config JSON schema."""
     return NODE_CATALOG
+
+
+class UploadResponse(BaseModel):
+    path: str
+
+
+@app.post("/upload", response_model=UploadResponse)
+async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
+    """Upload a CSV or Parquet file and return its server-side path.
+    
+    The returned path can be used directly in source.csv/source.parquet node configs.
+    Files are stored in ./uploads/ with UUID-based names to avoid collisions.
+    """
+    try:
+        # Generate unique filename to avoid collisions
+        file_ext = Path(file.filename or "").suffix or ".bin"
+        unique_name = f"{uuid.uuid4()}{file_ext}"
+        file_path = UPLOAD_DIR / unique_name
+
+        # Read and save file
+        contents = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(contents)
+
+        # Return absolute path for backend to use
+        return UploadResponse(path=str(file_path.resolve()))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to upload file: {str(exc)}") from exc
 
 
 class NodeResult(BaseModel):

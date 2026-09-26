@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useEditorStore } from "../store/editorStore";
 import { useCatalogueStore } from "../store/catalogueStore";
-import { parseCsvFile } from "../lib/csv";
 import { getSchemaIssues } from "../lib/schemaValidation";
 import { getOrderedParentIds, type GraphEdge } from "../lib/graph";
 import { computeNodeOutput } from "../lib/transform";
 import { labelForEntry } from "../lib/catalogueDisplay";
 import { SchemaForm, type SchemaFormContext } from "./SchemaForm";
+import { FileUploadWidget } from "./FileUploadWidget";
 import type { PipelineNode } from "../types/pipeline";
 
 /**
@@ -136,22 +136,29 @@ export function ConfigPanel() {
 
       {data.nodeType === "source.csv" && (
         <div className="config-form">
-          <label>
-            Upload CSV for schema &amp; preview
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const table = await parseCsvFile(file);
-                setSourceTable(id, table);
-                const path = (data.config as { path?: string }).path;
-                if (!path) setConfig({ ...data.config, path: file.name });
-              }}
-            />
-          </label>
+          <p className="config-form-label">Upload CSV</p>
+          <FileUploadWidget
+            nodeId={id}
+            onUploadPath={(path) => {
+              setConfig({ ...data.config, path });
+            }}
+            onPreviewUpdate={(table) => {
+              setSourceTable(id, table);
+            }}
+          />
           {sourceTables[id] && <p className="config-form-note">CSV loaded — downstream nodes can now select columns.</p>}
+        </div>
+      )}
+
+      {data.nodeType === "source.parquet" && (
+        <div className="config-form">
+          <p className="config-form-label">Upload Parquet</p>
+          <FileUploadWidget
+            nodeId={id}
+            onUploadPath={(path) => {
+              setConfig({ ...data.config, path });
+            }}
+          />
         </div>
       )}
 
