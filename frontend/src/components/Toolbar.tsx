@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useEditorStore } from "../store/editorStore";
 import { useCatalogueStore } from "../store/catalogueStore";
 import { validatePipeline } from "../lib/graph";
 import { toPipelineDefinition, downloadJson } from "../lib/serialize";
 import { parseCsvText } from "../lib/csv";
 import type { PipelineDefinition } from "../types/pipeline";
+import type { NodeResult } from "../types/api";
 
 export function Toolbar() {
   const pipelineId = useEditorStore((s) => s.pipelineId);
@@ -19,6 +20,10 @@ export function Toolbar() {
   const setSnapEnabled = useEditorStore((s) => s.setSnapEnabled);
   const catalogueEntries = useCatalogueStore((s) => s.entries);
 
+  const [running, setRunning] = useState(false);
+  const [results, setResults] = useState<NodeResult[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const definition = useMemo(
     () => toPipelineDefinition(pipelineId, nodes, edges),
     [pipelineId, nodes, edges],
@@ -31,6 +36,32 @@ export function Toolbar() {
 
   const handleExport = () => {
     downloadJson(`${pipelineId || "pipeline"}.json`, definition);
+  };
+
+  const handleRunPipeline = async () => {
+    setRunning(true);
+    setError(null);
+    setResults(null);
+
+    try {
+      const response = await fetch("/api/pipelines/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(definition),
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json()) as { detail?: string };
+        throw new Error(errorData.detail || `API error: ${response.statusText}`);
+      }
+
+      const data = (await response.json()) as { node_results: NodeResult[] };
+      setResults(data.node_results);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Pipeline execution failed");
+    } finally {
+      setRunning(false);
+    }
   };
 
   const handleLoadExample = async () => {
@@ -79,6 +110,14 @@ export function Toolbar() {
         <button className="primary-button" onClick={handleExport}>
           Export JSON
         </button>
+        <button
+          className="primary-button"
+          onClick={handleRunPipeline}
+          disabled={running || issues.length > 0}
+          title={issues.length > 0 ? "Fix validation issues before running" : "Execute the pipeline"}
+        >
+          {running ? "Running..." : "▶ Run Pipeline"}
+        </button>
       </div>
 
       {issues.length > 0 && (
@@ -87,6 +126,30 @@ export function Toolbar() {
             <li key={i}>{issue.message}</li>
           ))}
         </ul>
+      )}
+
+      {error && (
+        <div className="execution-error">
+          ❌ {error}
+        </div>
+      )}
+
+      {results && (
+        <div className="execution-results">
+          <h3>✓ Pipeline executed successfully</h3>
+          <div className="results-grid">
+            {results.map((result, i) => (
+              <div key={i} className="result-card">
+                <div className="result-node">
+                  <strong>{result.node_id}</strong> <small>({result.node_type})</small>
+                </div>
+                {result.port !== "output" && <div className="result-port">port: {result.port}</div>}
+                <div className="result-stat">{result.rows.toLocaleString()} rows</div>
+                <div className="result-columns">{result.columns.length} columns</div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </header>
   );
