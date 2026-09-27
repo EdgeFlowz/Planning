@@ -1,0 +1,7 @@
+OPENPROJECT_TOKEN: opapi-1eef6aad8477fa582df899eb49ab2fc1a2e5215a70bf3ff2de657038299bc3ed
+openproject:
+  url: "https://homelab.tail8007c1.ts.net"
+  project_identifier: "edge-data"
+
+import:
+  workbook: "scripts/openproject/imports/openproject_pipeline_roadmap_import.xlsx"
