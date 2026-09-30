@@ -77,3 +77,39 @@ class PipelineRun(BaseModel):
     completed_at: datetime | None = None
 
     error: str | None = None
+
+
+class NodeRunStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class NodeRun(BaseModel):
+    id: str
+    pipeline_run_id: str
+    node_id: str
+    node_type: str
+
+    status: NodeRunStatus = NodeRunStatus.QUEUED
+
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    rows_read: int | None = None
+    rows_written: int | None = None
+    columns: list[str] | None = None
+
+    error: str | None = None
+
+
+class Connection(BaseModel):
+    id: str
+    type: str
+    name: str
+    config: dict
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
