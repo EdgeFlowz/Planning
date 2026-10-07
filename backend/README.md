@@ -42,7 +42,9 @@ API docs are served at `http://localhost:8000/docs` once the server is running.
 
 ### Prometheus metrics
 
-The API exposes Prometheus-formatted HTTP metrics at `http://localhost:8000/metrics`:
+The API exposes Prometheus-formatted HTTP metrics at `http://localhost:8000/metrics`.
+`/v1/metrics` is also available for clients using the versioned API route convention
+(including the frontend's `/api` proxy):
 
 - `pipeline_api_http_requests_total` — request count by method, matched route, and status code
 - `pipeline_api_http_request_duration_seconds` — request latency histogram by method and route

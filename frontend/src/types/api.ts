@@ -37,9 +37,10 @@ export interface JobListResponse {
 // New v1 format
 export interface PipelineRun {
   id: string;
+  job_id?: string | null;
   pipeline_id: string;
   pipeline_version: number;
-  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
@@ -50,7 +51,7 @@ export interface NodeRunMetrics {
   id: string;
   node_id: string;
   node_type: string;
-  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
   started_at: string | null;
   completed_at: string | null;
   rows_read: number | null;

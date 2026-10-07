@@ -107,6 +107,12 @@ class PipelineRun(Base):
         nullable=False,
     )
 
+    job_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("jobs.id"),
+        unique=True,
+    )
+
     status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
@@ -137,6 +143,8 @@ class PipelineRun(Base):
         back_populates="pipeline_run",
         cascade="all, delete-orphan",
     )
+
+    job: Mapped["Job | None"] = relationship(back_populates="pipeline_run")
 
 
 class NodeRun(Base):
@@ -291,4 +299,9 @@ class Job(Base):
 
     cancelled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+    )
+
+    pipeline_run: Mapped["PipelineRun | None"] = relationship(
+        back_populates="job",
+        uselist=False,
     )

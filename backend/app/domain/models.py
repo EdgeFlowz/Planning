@@ -63,12 +63,14 @@ class PipelineRunStatus(StrEnum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class PipelineRun(BaseModel):
     id: str
     pipeline_id: str
     pipeline_version: int
+    job_id: str | None = None
 
     status: PipelineRunStatus = PipelineRunStatus.QUEUED
 
@@ -84,6 +86,7 @@ class NodeRunStatus(StrEnum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class NodeRun(BaseModel):

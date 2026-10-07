@@ -55,7 +55,7 @@ app = FastAPI(
 
 @app.middleware("http")
 async def instrument_http_requests(request, call_next):
-    if request.url.path == "/metrics":
+    if request.url.path in {"/metrics", "/v1/metrics", "/api/v1/metrics"}:
         return await call_next(request)
 
     started_at = perf_counter()
@@ -78,6 +78,8 @@ async def instrument_http_requests(request, call_next):
 
 
 @app.get("/metrics", include_in_schema=False, tags=["Observability"])
+@app.get("/v1/metrics", include_in_schema=False, tags=["Observability"])
+@app.get("/api/v1/metrics", include_in_schema=False, tags=["Observability"])
 def metrics() -> Response:
     """Expose Prometheus metrics for API traffic."""
     return Response(generate_latest(metrics_registry), media_type=CONTENT_TYPE_LATEST)
@@ -609,6 +611,9 @@ def list_runs(
         "runs": [
             {
                 "id": str(r.id),
+                "job_id": str(r.job_id) if r.job_id else None,
+                "pipeline_id": str(r.pipeline_version.pipeline_id),
+                "pipeline_version": r.pipeline_version.version,
                 "pipeline_version_id": str(r.pipeline_version_id),
                 "status": r.status,
                 "created_at": r.created_at.isoformat(),
@@ -652,6 +657,9 @@ def get_run(
     return {
         "run": {
             "id": str(run_orm.id),
+            "job_id": str(run_orm.job_id) if run_orm.job_id else None,
+            "pipeline_id": str(run_orm.pipeline_version.pipeline_id),
+            "pipeline_version": run_orm.pipeline_version.version,
             "pipeline_version_id": str(run_orm.pipeline_version_id),
             "status": run_orm.status,
             "created_at": run_orm.created_at.isoformat(),
@@ -715,6 +723,9 @@ def list_pipeline_runs(
         "runs": [
             {
                 "id": str(r.id),
+                "job_id": str(r.job_id) if r.job_id else None,
+                "pipeline_id": str(r.pipeline_version.pipeline_id),
+                "pipeline_version": r.pipeline_version.version,
                 "pipeline_version_id": str(r.pipeline_version_id),
                 "status": r.status,
                 "created_at": r.created_at.isoformat(),

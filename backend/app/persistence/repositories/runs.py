@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -11,7 +11,7 @@ from app.domain.models import (
     PipelineRun as PipelineRunDomain,
     PipelineRunStatus,
 )
-from app.persistence.models import Connection, NodeRun, PipelineRun
+from app.persistence.models import Connection, NodeRun, PipelineRun, PipelineVersion
 
 
 class PipelineRunRepository:
@@ -23,9 +23,20 @@ class PipelineRunRepository:
         pipeline_run: PipelineRunDomain,
     ) -> PipelineRunDomain:
         """Create a new pipeline run."""
+        version_statement = select(PipelineVersion).where(
+            PipelineVersion.pipeline_id == UUID(pipeline_run.pipeline_id),
+            PipelineVersion.version == pipeline_run.pipeline_version,
+        )
+        version = self.session.scalar(version_statement)
+        if version is None:
+            raise ValueError(
+                f"Pipeline version {pipeline_run.pipeline_id}:{pipeline_run.pipeline_version} not found"
+            )
+
         run_orm = PipelineRun(
             id=UUID(pipeline_run.id),
-            pipeline_version_id=UUID(f"00000000-0000-0000-0000-000000000000"),  # placeholder
+            pipeline_version_id=version.id,
+            job_id=UUID(pipeline_run.job_id) if pipeline_run.job_id else None,
             status=pipeline_run.status.value,
             created_at=pipeline_run.created_at,
             started_at=pipeline_run.started_at,
@@ -39,6 +50,11 @@ class PipelineRunRepository:
 
         return pipeline_run
 
+    def get_by_job_id(self, job_id: str) -> PipelineRunDomain | None:
+        statement = select(PipelineRun).where(PipelineRun.job_id == UUID(job_id))
+        run_orm = self.session.scalar(statement)
+        return self._to_domain(run_orm) if run_orm is not None else None
+
     def get(self, run_id: str) -> PipelineRunDomain | None:
         """Get a pipeline run by ID."""
         statement = select(PipelineRun).where(
@@ -50,10 +66,15 @@ class PipelineRunRepository:
         if run_orm is None:
             return None
 
+        return self._to_domain(run_orm)
+
+    @staticmethod
+    def _to_domain(run_orm: PipelineRun) -> PipelineRunDomain:
         return PipelineRunDomain(
             id=str(run_orm.id),
-            pipeline_id=str(run_orm.pipeline_version_id),
-            pipeline_version=0,  # TODO: get from pipeline_version relationship
+            pipeline_id=str(run_orm.pipeline_version.pipeline_id),
+            pipeline_version=run_orm.pipeline_version.version,
+            job_id=str(run_orm.job_id) if run_orm.job_id else None,
             status=PipelineRunStatus(run_orm.status),
             created_at=run_orm.created_at,
             started_at=run_orm.started_at,
@@ -91,25 +112,15 @@ class PipelineRunRepository:
 
     def list_by_pipeline(self, pipeline_id: str) -> list[PipelineRunDomain]:
         """List all runs for a pipeline."""
-        statement = select(PipelineRun).where(
-            PipelineRun.pipeline_version_id == UUID(pipeline_id)
+        statement = (
+            select(PipelineRun)
+            .join(PipelineVersion)
+            .where(PipelineVersion.pipeline_id == UUID(pipeline_id))
         )
 
         runs_orm = self.session.scalars(statement).all()
 
-        return [
-            PipelineRunDomain(
-                id=str(run.id),
-                pipeline_id=str(run.pipeline_version_id),
-                pipeline_version=0,  # TODO: get from pipeline_version relationship
-                status=PipelineRunStatus(run.status),
-                created_at=run.created_at,
-                started_at=run.started_at,
-                completed_at=run.completed_at,
-                error=run.error,
-            )
-            for run in runs_orm
-        ]
+        return [self._to_domain(run) for run in runs_orm]
 
 
 class NodeRunRepository:
@@ -201,6 +212,37 @@ class NodeRunRepository:
         if error is not None:
             run_orm.error = error
 
+        self.session.commit()
+
+    def reset_for_retry(self, pipeline_run_id: str) -> None:
+        """Clear node attempt details before retrying the same persisted run."""
+        statement = select(NodeRun).where(NodeRun.pipeline_run_id == UUID(pipeline_run_id))
+        for node_run in self.session.scalars(statement):
+            node_run.status = NodeRunStatus.QUEUED.value
+            node_run.started_at = None
+            node_run.completed_at = None
+            node_run.rows_read = None
+            node_run.rows_written = None
+            node_run.columns = None
+            node_run.error = None
+        self.session.commit()
+
+    def finish_unfinished(
+        self,
+        pipeline_run_id: str,
+        status: NodeRunStatus,
+        error: str | None = None,
+    ) -> None:
+        """Set a terminal state on node records that did not complete."""
+        statement = select(NodeRun).where(
+            NodeRun.pipeline_run_id == UUID(pipeline_run_id),
+            NodeRun.status.in_([NodeRunStatus.QUEUED.value, NodeRunStatus.RUNNING.value]),
+        )
+        now = datetime.now(timezone.utc)
+        for node_run in self.session.scalars(statement):
+            node_run.status = status.value
+            node_run.completed_at = now
+            node_run.error = error
         self.session.commit()
 
     def list_by_pipeline_run(self, pipeline_run_id: str) -> list[NodeRunDomain]:
