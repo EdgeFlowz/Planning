@@ -6,6 +6,7 @@ import { toPipelineDefinition, downloadJson } from "../lib/serialize";
 import { parseCsvText } from "../lib/csv";
 import { jobs } from "../lib/api";
 import { useJobPolling } from "../hooks/useJobPolling";
+import { JobHistory } from "./JobHistory";
 import type { PipelineDefinition } from "../types/pipeline";
 
 const ACTIVE_STATUSES = ["queued", "running"];
@@ -29,6 +30,7 @@ export function Toolbar() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const { job, error: pollError } = useJobPolling(activeJobId);
   const jobIsActive = job !== null && ACTIVE_STATUSES.includes(job.status);
@@ -145,6 +147,14 @@ export function Toolbar() {
         </button>
         <button onClick={handleLoadExample}>Load Example</button>
         <button onClick={reset}>Reset</button>
+        <button
+          className={`toolbar-toggle${historyOpen ? " on" : ""}`}
+          onClick={() => setHistoryOpen((o) => !o)}
+          aria-pressed={historyOpen}
+          title="View past job runs"
+        >
+          🕘 History
+        </button>
         <button className="primary-button" onClick={handleExport}>
           Export JSON
         </button>
@@ -170,6 +180,8 @@ export function Toolbar() {
           </button>
         )}
       </div>
+
+      {historyOpen && <JobHistory onClose={() => setHistoryOpen(false)} />}
 
       {issues.length > 0 && (
         <ul className="validation-issues">

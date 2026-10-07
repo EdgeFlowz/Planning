@@ -15,6 +15,11 @@ npm run dev
 Open the printed local URL. Click **Load Example** to load `example_data/sales.csv` and
 `example_data/sales_pipeline.json` and see them running through the editor.
 
+**Run Pipeline** and **Save Pipeline** call the backend API (proxied from `/api/*` to
+`http://127.0.0.1:8000` — see `vite.config.ts`), so the API server, worker, and Redis must all be
+running first (see [`../backend/README.md`](../backend/README.md)). Everything else (canvas,
+config panel, live data preview) works with the frontend alone.
+
 ## How it works
 
 - **Node palette** (left) — drag a node type onto the canvas.
@@ -27,6 +32,11 @@ Open the printed local URL. Click **Load Example** to load `example_data/sales.c
   to the selected one, entirely in the browser (`src/lib/transform.ts`), so you can see the effect
   of each step without a backend.
 - **Pipeline Definition** (bottom right) — the live JSON export. **Export JSON** downloads it.
+- **Run Pipeline** — submits the pipeline definition to the backend as an async job
+  (`POST /v1/jobs`) and polls its status (`src/hooks/useJobPolling.ts`) until it reaches a
+  terminal state (succeeded/failed/cancelled), showing results or errors and a **Cancel** button
+  while the job is queued/running.
+- **Save Pipeline** — persists the pipeline definition to the backend's pipeline store.
 
 Supported node types: `source.csv`, `transform.select`, `transform.filter`, `transform.rename`,
 `transform.drop`. Add new types by extending `src/types/pipeline.ts` (config shape + default),

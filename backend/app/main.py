@@ -1,10 +1,12 @@
 import uuid
+from time import perf_counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -28,6 +30,12 @@ from app.config import settings
 from app.domain.models import PipelineDefinition
 from app.domain.validator import PipelineValidationError, validate_pipeline
 from app.execution.executor import execute_pipeline
+from app.metrics import (
+    http_request_duration_seconds,
+    http_requests_in_progress,
+    http_requests_total,
+    registry as metrics_registry,
+)
 from app.persistence.session import SessionLocal, get_db
 
 # Initialize database engine
@@ -43,6 +51,36 @@ app = FastAPI(
     version="0.1.0",
     description="Visual, declarative data pipeline platform",
 )
+
+
+@app.middleware("http")
+async def instrument_http_requests(request, call_next):
+    if request.url.path == "/metrics":
+        return await call_next(request)
+
+    started_at = perf_counter()
+    route = "__unmatched__"
+    status = "500"
+    http_requests_in_progress.inc()
+    try:
+        response = await call_next(request)
+        status = str(response.status_code)
+        matched_route = request.scope.get("route")
+        if matched_route is not None:
+            route = matched_route.path
+        return response
+    finally:
+        http_requests_in_progress.dec()
+        http_requests_total.labels(request.method, route, status).inc()
+        http_request_duration_seconds.labels(request.method, route).observe(
+            perf_counter() - started_at
+        )
+
+
+@app.get("/metrics", include_in_schema=False, tags=["Observability"])
+def metrics() -> Response:
+    """Expose Prometheus metrics for API traffic."""
+    return Response(generate_latest(metrics_registry), media_type=CONTENT_TYPE_LATEST)
 
 
 # ============================================================================
