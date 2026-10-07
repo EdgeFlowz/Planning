@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, Depends
@@ -17,6 +18,10 @@ from app.api.schemas import (
     ValidationIssueResponse,
     PipelineRunDetailResponse,
     NodeResult,
+    JobSubmitRequest,
+    JobResponse,
+    JobListResponse,
+    JobCancelRequest,
 )
 from app.catalog import NODE_CATALOG, NodeTypeDefinition
 from app.config import settings
@@ -846,6 +851,287 @@ def delete_connection(
     db.commit()
     
     return {"deleted": True, "connection_id": connection_id}
+
+
+# ============================================================================
+# Job Queue Endpoints (Async Execution)
+# ============================================================================
+
+@app.post(
+    "/v1/jobs",
+    tags=["Jobs"],
+    summary="Submit a pipeline for async execution",
+    description="Enqueue a pipeline definition for asynchronous execution. Returns immediately with a job_id.",
+    response_model=JobResponse,
+)
+def submit_job(
+    req: JobSubmitRequest,
+    db: Session = Depends(get_db),
+) -> JobResponse:
+    """Submit a pipeline for async execution via job queue.
+    
+    This endpoint validates the pipeline and enqueues it for execution.
+    The caller should poll GET /v1/jobs/{job_id} to check status.
+    
+    Args:
+        req: Job submission request with display_name and pipeline_definition
+        db: Database session
+        
+    Returns:
+        Job with status="queued" and job_id to use for polling
+        
+    Raises:
+        HTTPException(422): If pipeline validation fails before enqueueing
+    """
+    from app.persistence.repositories.jobs import JobRepository
+    from app.queue import get_job_queue
+    from app.domain.models import Job, JobStatus
+    
+    # Parse and validate pipeline definition
+    pipeline_definition = PipelineDefinition.model_validate(req.pipeline_definition)
+    
+    # Quick validation to catch obvious errors
+    validation_issues = validate_pipeline(pipeline_definition)
+    if validation_issues:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "PIPELINE_VALIDATION_FAILED",
+                "message": "The pipeline contains validation errors.",
+                "details": [
+                    {
+                        "node_id": getattr(issue, "node_id", None),
+                        "code": issue.code,
+                        "message": issue.message,
+                    }
+                    for issue in validation_issues
+                ],
+            },
+        )
+    
+    # Create job in database with QUEUED status
+    job_id = str(uuid.uuid4())
+    job = Job(
+        id=job_id,
+        display_name=req.display_name,
+        pipeline_definition=pipeline_definition,
+        status=JobStatus.QUEUED,
+        created_at=datetime.now(timezone.utc),
+    )
+    
+    repo = JobRepository(db)
+    created_job = repo.create(job)
+    
+    # Enqueue job to Redis queue for worker pickup
+    try:
+        queue = get_job_queue()
+        queue.enqueue(
+            "worker.executor.execute_job",
+            {
+                "job_id": job_id,
+                "pipeline_definition": pipeline_definition.model_dump(),
+                "display_name": req.display_name,
+            },
+            job_id=job_id,
+            job_timeout=14400,  # 4 hours (RQ-reserved kwarg, not passed to execute_job)
+        )
+    except Exception as e:
+        # If enqueueing fails, update job status to FAILED
+        repo.update_status(job_id, JobStatus.FAILED, error=f"Failed to enqueue job: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail="Job queue unavailable. Please try again later.",
+        )
+    
+    # Return job response
+    return JobResponse(
+        id=created_job.id,
+        display_name=created_job.display_name,
+        status=created_job.status.value,
+        result=created_job.result,
+        error=created_job.error,
+        retry_count=created_job.retry_count,
+        max_retries=created_job.max_retries,
+        created_at=created_job.created_at.isoformat(),
+        started_at=created_job.started_at.isoformat() if created_job.started_at else None,
+        completed_at=created_job.completed_at.isoformat() if created_job.completed_at else None,
+        cancelled_at=created_job.cancelled_at.isoformat() if created_job.cancelled_at else None,
+    )
+
+
+@app.get(
+    "/v1/jobs/{job_id}",
+    tags=["Jobs"],
+    summary="Get job status and results",
+    description="Poll for job status and retrieve results when complete.",
+    response_model=JobResponse,
+)
+def get_job(
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> JobResponse:
+    """Get the current status and results of a job.
+    
+    Args:
+        job_id: Job UUID string
+        db: Database session
+        
+    Returns:
+        JobResponse with current status and results (if complete)
+        
+    Raises:
+        HTTPException(404): If job not found
+    """
+    from app.persistence.repositories.jobs import JobRepository
+    
+    repo = JobRepository(db)
+    job = repo.get(job_id)
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    return JobResponse(
+        id=job.id,
+        display_name=job.display_name,
+        status=job.status.value,
+        result=job.result,
+        error=job.error,
+        retry_count=job.retry_count,
+        max_retries=job.max_retries,
+        created_at=job.created_at.isoformat(),
+        started_at=job.started_at.isoformat() if job.started_at else None,
+        completed_at=job.completed_at.isoformat() if job.completed_at else None,
+        cancelled_at=job.cancelled_at.isoformat() if job.cancelled_at else None,
+    )
+
+
+@app.get(
+    "/v1/jobs",
+    tags=["Jobs"],
+    summary="List all jobs",
+    description="Get paginated list of all jobs (useful for monitoring).",
+    response_model=JobListResponse,
+)
+def list_jobs(
+    skip: int = 0,
+    limit: int = 10,
+    status: str | None = None,
+    db: Session = Depends(get_db),
+) -> JobListResponse:
+    """List all jobs with optional filtering by status.
+    
+    Args:
+        skip: Number of jobs to skip (pagination)
+        limit: Maximum jobs to return
+        status: Optional status filter (queued, running, succeeded, failed, cancelled)
+        db: Database session
+        
+    Returns:
+        JobListResponse with paginated list of jobs
+    """
+    from app.persistence.repositories.jobs import JobRepository
+    from app.domain.models import JobStatus
+    
+    repo = JobRepository(db)
+    
+    if status:
+        try:
+            status_enum = JobStatus(status)
+            jobs, total = repo.list_by_status(status_enum, skip=skip, limit=limit)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status: {status}. Must be one of: {', '.join([s.value for s in JobStatus])}",
+            )
+    else:
+        jobs, total = repo.list_all(skip=skip, limit=limit)
+    
+    return JobListResponse(
+        jobs=[
+            JobResponse(
+                id=job.id,
+                display_name=job.display_name,
+                status=job.status.value,
+                result=job.result,
+                error=job.error,
+                retry_count=job.retry_count,
+                max_retries=job.max_retries,
+                created_at=job.created_at.isoformat(),
+                started_at=job.started_at.isoformat() if job.started_at else None,
+                completed_at=job.completed_at.isoformat() if job.completed_at else None,
+                cancelled_at=job.cancelled_at.isoformat() if job.cancelled_at else None,
+            )
+            for job in jobs
+        ],
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@app.delete(
+    "/v1/jobs/{job_id}",
+    tags=["Jobs"],
+    summary="Cancel a job",
+    description="Cancel a queued or running job.",
+    response_model=dict,
+)
+def cancel_job(
+    job_id: str,
+    req: JobCancelRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Cancel a job that is queued or running.
+    
+    Args:
+        job_id: Job UUID string
+        req: Cancellation request with optional reason
+        db: Database session
+        
+    Returns:
+        Confirmation dict with job_id and cancelled status
+        
+    Raises:
+        HTTPException(404): If job not found
+        HTTPException(400): If job is already completed
+    """
+    from app.persistence.repositories.jobs import JobRepository
+    from app.queue import get_job_queue
+    from app.domain.models import JobStatus
+    
+    repo = JobRepository(db)
+    job = repo.get(job_id)
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Can only cancel queued or running jobs
+    if job.status in (JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel job with status '{job.status.value}'",
+        )
+    
+    # Cancel in database
+    repo.update_status(
+        job_id,
+        JobStatus.CANCELLED,
+        error=req.reason,
+    )
+    
+    # Try to cancel in Redis queue (may not be picked up yet)
+    try:
+        queue = get_job_queue()
+        queue.enqueue_call("cancel", args=(job_id,))
+    except Exception:
+        # Cancellation in queue is optional - if it fails, job is just marked as cancelled in DB
+        pass
+    
+    return {
+        "job_id": job_id,
+        "cancelled": True,
+        "reason": req.reason,
+    }
 
 
 # ============================================================================

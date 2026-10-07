@@ -230,6 +230,58 @@ function pickRenderBranch(branches: JsonSchema[], value: unknown): JsonSchema {
   return byValueType ?? nonNull[0] ?? branches[0];
 }
 
+/** A union of plain JS scalar types with no shared discriminator (e.g. LiteralExpr's
+ * `value: str | float | int | bool`) — picking a branch by the current value's type (as
+ * `pickRenderBranch` does) silently locks the field to whatever type its default happened to be,
+ * so a number typed into what rendered as a text input stayed a JSON string forever (and broke
+ * Polars comparisons downstream). This needs an explicit type choice instead. */
+function isScalarUnion(branches: JsonSchema[]): boolean {
+  const scalarTypes = new Set(["string", "number", "integer", "boolean"]);
+  if (branches.length < 2 || !branches.every((b) => scalarTypes.has(b.type))) return false;
+  const distinctKinds = new Set(branches.map((b) => (b.type === "integer" ? "number" : b.type)));
+  return distinctKinds.size > 1;
+}
+
+function ScalarUnionField({
+  branches,
+  value,
+  onChange,
+}: {
+  branches: JsonSchema[];
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const hasString = branches.some((b) => b.type === "string");
+  const hasNumber = branches.some((b) => b.type === "number" || b.type === "integer");
+  const hasBoolean = branches.some((b) => b.type === "boolean");
+
+  const kind: "string" | "number" | "boolean" =
+    typeof value === "boolean" ? "boolean" : typeof value === "number" ? "number" : "string";
+
+  const setKind = (next: "string" | "number" | "boolean") => {
+    if (next === "boolean") onChange(false);
+    else if (next === "number") onChange(0);
+    else onChange("");
+  };
+
+  return (
+    <div className="config-form-row">
+      <select value={kind} onChange={(e) => setKind(e.target.value as "string" | "number" | "boolean")}>
+        {hasString && <option value="string">Text</option>}
+        {hasNumber && <option value="number">Number</option>}
+        {hasBoolean && <option value="boolean">Yes/No</option>}
+      </select>
+      {kind === "boolean" ? (
+        <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />
+      ) : kind === "number" ? (
+        <input type="number" value={typeof value === "number" ? value : 0} onChange={(e) => onChange(e.target.valueAsNumber)} />
+      ) : (
+        <input type="text" value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} />
+      )}
+    </div>
+  );
+}
+
 /** oneOf/anyOf fields without an x-widget: either a discriminated union (the expression grammar)
  * or a plain "could be one of a few JS types" union (e.g. a literal's value, or a bool-or-per-item
  * list flag) — rendered as whichever branch best matches the value already there. */
@@ -273,6 +325,10 @@ function UnionField({
         <ObjectFields schema={activeBranch} root={root} value={value} onChange={onChange} context={context} />
       </div>
     );
+  }
+
+  if (isScalarUnion(nonNull)) {
+    return <ScalarUnionField branches={nonNull} value={value} onChange={onChange} />;
   }
 
   const branch = pickRenderBranch(nonNull, value);

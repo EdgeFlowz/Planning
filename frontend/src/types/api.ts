@@ -12,6 +12,28 @@ export interface PipelineRunResponse {
   node_results: NodeResult[];
 }
 
+// Async job queue (POST /v1/jobs)
+export interface Job {
+  id: string;
+  display_name: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  result: { node_results: NodeResult[] } | null;
+  error: string | null;
+  retry_count: number;
+  max_retries: number;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+}
+
+export interface JobListResponse {
+  jobs: Job[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
 // New v1 format
 export interface PipelineRun {
   id: string;
