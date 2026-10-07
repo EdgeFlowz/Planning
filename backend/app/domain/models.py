@@ -1,4 +1,7 @@
-from pydantic import BaseModel
+from datetime import datetime, timezone
+from enum import StrEnum
+from pydantic import BaseModel, Field
+
 
 
 class Node(BaseModel):
@@ -30,9 +33,83 @@ class Edge(BaseModel):
     output: str | None = None
     condition: Condition | None = None
 
+class Pipeline(BaseModel):
+    id: str
+    name: str
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
 
 class PipelineDefinition(BaseModel):
     schema_version: int
     pipeline_id: str
     nodes: list[Node]
     edges: list[Edge]
+
+class PipelineVersion(BaseModel):
+    pipeline_id: str
+    version: int
+    definition: PipelineDefinition
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+class PipelineRunStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class PipelineRun(BaseModel):
+    id: str
+    pipeline_id: str
+    pipeline_version: int
+
+    status: PipelineRunStatus = PipelineRunStatus.QUEUED
+
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    error: str | None = None
+
+
+class NodeRunStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class NodeRun(BaseModel):
+    id: str
+    pipeline_run_id: str
+    node_id: str
+    node_type: str
+
+    status: NodeRunStatus = NodeRunStatus.QUEUED
+
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    rows_read: int | None = None
+    rows_written: int | None = None
+    columns: list[str] | None = None
+
+    error: str | None = None
+
+
+class Connection(BaseModel):
+    id: str
+    type: str
+    name: str
+    config: dict
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )

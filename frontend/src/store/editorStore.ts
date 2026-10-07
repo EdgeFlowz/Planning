@@ -11,11 +11,12 @@ import {
 import type { EditorEdge, EditorNode } from "../types/editor";
 import type { PipelineDefinition } from "../types/pipeline";
 import type { ParsedCsv } from "../lib/csv";
-import { fromPipelineDefinition, PIPELINE_EDGE_TYPE } from "../lib/serialize";
+import { fromPipelineDefinition, toPipelineDefinition, PIPELINE_EDGE_TYPE } from "../lib/serialize";
 import { useCatalogueStore } from "./catalogueStore";
 import { buildDefaultConfig } from "../lib/jsonSchema";
 import { portsForEntry } from "../lib/ports";
 import { canConnect } from "../lib/connectionRules";
+import { pipelines as pipelinesApi } from "../lib/api";
 
 export type FlowDirection = "vertical" | "horizontal";
 
@@ -84,6 +85,12 @@ interface EditorState {
   setSourceTable: (nodeId: string, table: ParsedCsv) => void;
   loadPipeline: (definition: PipelineDefinition, tables?: Record<string, ParsedCsv>) => void;
   reset: () => void;
+
+  // New API methods for database persistence
+  savePipelineToDatabase: (name: string) => Promise<string>;
+  loadPipelineFromDatabase: (id: string) => Promise<void>;
+  listPipelinesFromDatabase: (skip?: number, limit?: number) => Promise<any>;
+  deletePipelineFromDatabase: (id: string) => Promise<void>;
 }
 
 function shortTypeName(type: string): string {
@@ -271,6 +278,35 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       sourceTables: tables ?? {},
       idCounters,
     });
+  },
+
+  // Save current pipeline to database
+  savePipelineToDatabase: async (name: string) => {
+    const state = get();
+    // Build the full pipeline definition with current nodes and edges
+    const definition = toPipelineDefinition(state.pipelineId, state.nodes, state.edges);
+    // Send to backend with definition
+    const result = await pipelinesApi.create(name, definition);
+    set({ pipelineId: result.id });
+    return result.id;
+  },
+
+  // Load pipeline from database
+  loadPipelineFromDatabase: async (id: string) => {
+    const result = await pipelinesApi.get(id);
+    set({ pipelineId: result.id });
+    // Note: In production, you'd also fetch the pipeline definition and load it
+  },
+
+  // List all pipelines from database
+  listPipelinesFromDatabase: async (skip = 0, limit = 10) => {
+    const result = await pipelinesApi.list(skip, limit);
+    return result;
+  },
+
+  // Delete pipeline from database
+  deletePipelineFromDatabase: async (id: string) => {
+    await pipelinesApi.delete(id);
   },
 
   reset: () => set({ ...initial, nodes: [], edges: [], sourceTables: {}, idCounters: {} }),

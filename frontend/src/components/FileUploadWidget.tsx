@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { files } from "../lib/api";
 import type { ParsedCsv } from "../lib/csv";
 import { parseCsvText } from "../lib/csv";
 
@@ -8,7 +9,7 @@ interface FileUploadWidgetProps {
   onPreviewUpdate?: (table: ParsedCsv) => void; // Update the live preview
 }
 
-export function FileUploadWidget({ nodeId, onUploadPath, onPreviewUpdate }: FileUploadWidgetProps) {
+export function FileUploadWidget({ nodeId: _nodeId, onUploadPath, onPreviewUpdate }: FileUploadWidgetProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadedPath, setUploadedPath] = useState<string | null>(null);
@@ -21,20 +22,8 @@ export function FileUploadWidget({ nodeId, onUploadPath, onPreviewUpdate }: File
     setError(null);
 
     try {
-      // Upload to backend
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-
-      const data = (await response.json()) as { path: string };
+      // Upload using new v1 endpoint
+      const data = await files.upload(file);
       setUploadedPath(data.path);
       onUploadPath(data.path);
 

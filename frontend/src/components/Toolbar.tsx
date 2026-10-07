@@ -4,6 +4,7 @@ import { useCatalogueStore } from "../store/catalogueStore";
 import { validatePipeline } from "../lib/graph";
 import { toPipelineDefinition, downloadJson } from "../lib/serialize";
 import { parseCsvText } from "../lib/csv";
+import { execution } from "../lib/api";
 import type { PipelineDefinition } from "../types/pipeline";
 import type { NodeResult } from "../types/api";
 
@@ -18,11 +19,14 @@ export function Toolbar() {
   const setFlowDirection = useEditorStore((s) => s.setFlowDirection);
   const snapEnabled = useEditorStore((s) => s.snapEnabled);
   const setSnapEnabled = useEditorStore((s) => s.setSnapEnabled);
+  const savePipelineToDatabase = useEditorStore((s) => s.savePipelineToDatabase);
   const catalogueEntries = useCatalogueStore((s) => s.entries);
 
   const [running, setRunning] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [results, setResults] = useState<NodeResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
   const definition = useMemo(
     () => toPipelineDefinition(pipelineId, nodes, edges),
@@ -38,25 +42,40 @@ export function Toolbar() {
     downloadJson(`${pipelineId || "pipeline"}.json`, definition);
   };
 
+  const handleSavePipeline = async () => {
+    if (!pipelineId.trim()) {
+      setError("Please enter a pipeline name before saving");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setSaveSuccess(null);
+
+    try {
+      await savePipelineToDatabase(pipelineId);
+      setSaveSuccess(`Pipeline "${pipelineId}" saved successfully`);
+      // Clear success message after 3 seconds
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save pipeline");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleRunPipeline = async () => {
     setRunning(true);
     setError(null);
     setResults(null);
 
     try {
-      const response = await fetch("/api/pipelines/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(definition),
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json()) as { detail?: string };
-        throw new Error(errorData.detail || `API error: ${response.statusText}`);
-      }
-
-      const data = (await response.json()) as { node_results: NodeResult[] };
-      setResults(data.node_results);
+      const response = await execution.run(definition);
+      
+      // New v1 format returns { run: {...}, node_results: [...] }
+      // Extract node_results for backward compatibility with existing display
+      const nodeResults: NodeResult[] = response.node_results || [];
+      setResults(nodeResults);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Pipeline execution failed");
     } finally {
@@ -112,6 +131,14 @@ export function Toolbar() {
         </button>
         <button
           className="primary-button"
+          onClick={handleSavePipeline}
+          disabled={saving}
+          title="Save pipeline to database"
+        >
+          {saving ? "Saving..." : "💾 Save Pipeline"}
+        </button>
+        <button
+          className="primary-button"
           onClick={handleRunPipeline}
           disabled={running || issues.length > 0}
           title={issues.length > 0 ? "Fix validation issues before running" : "Execute the pipeline"}
@@ -131,6 +158,12 @@ export function Toolbar() {
       {error && (
         <div className="execution-error">
           ❌ {error}
+        </div>
+      )}
+
+      {saveSuccess && (
+        <div className="execution-success">
+          {saveSuccess}
         </div>
       )}
 
