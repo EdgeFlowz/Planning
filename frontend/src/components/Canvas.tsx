@@ -13,6 +13,7 @@ import {
   type Edge,
   type IsValidConnection,
   type Node,
+  type NodeChange,
   type NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -26,19 +27,20 @@ import { canConnect } from "../lib/connectionRules";
 import { portsForEntry } from "../lib/ports";
 import { PIPELINE_EDGE_TYPE } from "../lib/serialize";
 import {
-  collectHandlePoints,
-  findBestPair,
-  findEdgeNearPoint,
+  ESTIMATED_NODE_SIZE,
+  nodeGeometry,
+  planPaletteDrop,
+  previewHandles,
   sameCandidate,
-  virtualHandlePoints,
-  type HandlePoint,
+  snapPosition,
+  type NodeGeometry,
 } from "../lib/proximity";
+import type { EditorNode } from "../types/editor";
 
 const nodeTypes = { pipelineNode: PipelineNodeView };
 const edgeTypes = { [PIPELINE_EDGE_TYPE]: PipelineEdge };
 
-/** Approximate rendered size of a node, used to preview a palette drop before the node exists. */
-const GHOST_NODE_SIZE = { width: 180, height: 84 };
+const GHOST_NODE_SIZE = ESTIMATED_NODE_SIZE;
 const DRAG_PREVIEW_ID = "__dragging__";
 
 export function Canvas() {
@@ -61,6 +63,7 @@ export function Canvas() {
   const setGhost = useInteractionStore((s) => s.setGhost);
   const setSpliceEdgeId = useInteractionStore((s) => s.setSpliceEdgeId);
   const setDragPreview = useInteractionStore((s) => s.setDragPreview);
+  const setPendingSnap = useInteractionStore((s) => s.setPendingSnap);
   const clearInteraction = useInteractionStore((s) => s.clear);
 
   const { screenToFlowPosition } = useReactFlow();
@@ -72,6 +75,8 @@ export function Canvas() {
   // Tracks whether a reconnect ended on a handle; if not, the edge was dropped on empty canvas
   // and should be deleted (React Flow has no single callback for "dropped nowhere").
   const reconnectLanded = useRef(true);
+  // `dragover` fires every ~50ms even while the pointer is still; skip the work when nothing moved.
+  const lastDragPoint = useRef<{ x: number; y: number; type: string } | null>(null);
 
   // React Flow caches each node's handle positions, and two things invalidate that cache without
   // changing the node itself: flipping the flow axis (handles move to another side) and the
@@ -87,14 +92,49 @@ export function Canvas() {
     [pruneRemovedNodes],
   );
 
+  /** Geometry of every real node on the canvas — never the palette-drag stand-in. */
+  const collectCanvasGeometry = useCallback((): NodeGeometry[] => {
+    const geometry: NodeGeometry[] = [];
+    for (const node of storeApi.getState().nodeLookup.values()) {
+      if (node.id !== DRAG_PREVIEW_ID) geometry.push(nodeGeometry(node));
+    }
+    return geometry;
+  }, [storeApi]);
+
   // React Flow measures the drag stand-in and emits changes for it like any other node. Drop those
   // before they reach the store, so the preview can never be mistaken for part of the pipeline.
   const handleNodesChange = useCallback(
-    (changes: Parameters<typeof onNodesChange>[0]) => {
+    (changes: NodeChange<EditorNode>[]) => {
       const real = changes.filter((c) => !("id" in c) || c.id !== DRAG_PREVIEW_ID);
       if (real.length > 0) onNodesChange(real);
+
+      // A node created already connected was placed from an estimate of its size. Its first
+      // measurement is the moment its real handle positions are known, so line it up again now.
+      // React Flow updates its lookup before emitting the change, so the bounds read here are fresh.
+      const pending = useInteractionStore.getState().pendingSnap;
+      if (!pending || !real.some((c) => c.type === "dimensions" && c.id === pending.nodeId)) return;
+      setPendingSnap(null);
+
+      const internal = storeApi.getState().nodeLookup.get(pending.nodeId);
+      if (!internal) return;
+      const geometry = nodeGeometry(internal);
+      const mine = geometry.points.find((p) => p.type === pending.handleType && p.handleId === pending.handleId);
+      if (!mine) return;
+
+      const obstacles = collectCanvasGeometry()
+        .filter((g) => g.id !== pending.nodeId)
+        .map((g) => g.rect);
+      const position = snapPosition(
+        { mine, theirs: pending.theirs },
+        geometry.rect,
+        useEditorStore.getState().flowDirection,
+        obstacles,
+      );
+      if (position.x !== geometry.rect.x || position.y !== geometry.rect.y) {
+        onNodesChange([{ type: "position", id: pending.nodeId, position }]);
+      }
     },
-    [onNodesChange],
+    [onNodesChange, setPendingSnap, storeApi, collectCanvasGeometry],
   );
 
   const isValidConnection = useCallback<IsValidConnection>(
@@ -106,20 +146,38 @@ export function Canvas() {
     [],
   );
 
-  /** Handle points for every node currently on the canvas, keyed by node id. */
-  const collectCanvasPoints = useCallback(() => {
-    const byNode = new Map<string, HandlePoint[]>();
-    const all: HandlePoint[] = [];
-    for (const node of storeApi.getState().nodeLookup.values()) {
-      const points = collectHandlePoints(node);
-      byNode.set(node.id, points);
-      all.push(...points);
-    }
-    return { byNode, all };
-  }, [storeApi]);
+  /** What releasing palette item `type` at this screen point would do. */
+  const planDropAt = useCallback(
+    (type: string, client: { x: number; y: number }) => {
+      const entries = useCatalogueStore.getState().entries;
+      const { nodes: n, edges: e, flowDirection: dir } = useEditorStore.getState();
+      return planPaletteDrop({
+        previewId: DRAG_PREVIEW_ID,
+        nodeType: type,
+        centre: screenToFlowPosition(client),
+        size: GHOST_NODE_SIZE,
+        ports: portsForEntry(entries.find((entry) => entry.type === type)),
+        direction: dir,
+        others: collectCanvasGeometry(),
+        nodes: n,
+        edges: e,
+        entries,
+      });
+    },
+    [screenToFlowPosition, collectCanvasGeometry],
+  );
+
+  const clearDropPreview = useCallback(() => {
+    lastDragPoint.current = null;
+    const state = useInteractionStore.getState();
+    if (state.ghost) setGhost(null);
+    if (state.spliceEdgeId) setSpliceEdgeId(null);
+    if (state.dragPreview) setDragPreview(null);
+  }, [setGhost, setSpliceEdgeId, setDragPreview]);
 
   const onDragOver = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
+      // Must run on every dragover, or the browser treats the canvas as not accepting the drop.
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
 
@@ -128,57 +186,62 @@ export function Canvas() {
       const type = useInteractionStore.getState().paletteDragType;
       if (!type) return;
 
-      const entries = useCatalogueStore.getState().entries;
-      const ports = portsForEntry(entries.find((e) => e.type === type));
-      const centre = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      const { byNode, all } = collectCanvasPoints();
-      const { nodes: n, edges: e, flowDirection: dir } = useEditorStore.getState();
+      const last = lastDragPoint.current;
+      if (last && last.x === event.clientX && last.y === event.clientY && last.type === type) return;
+      lastDragPoint.current = { x: event.clientX, y: event.clientY, type };
 
-      // Dropping onto an existing connection splices the node into it — but only if the node has
-      // both an input and an output to splice with.
-      const canSplice = ports.inputs.length > 0 && ports.outputs.length > 0;
-      const hitEdge = canSplice ? findEdgeNearPoint(centre, e, byNode, dir) : null;
-      if (hitEdge) {
-        if (useInteractionStore.getState().spliceEdgeId !== hitEdge.id) setSpliceEdgeId(hitEdge.id);
-        if (useInteractionStore.getState().ghost) setGhost(null);
-        setDragPreview(null);
+      const plan = planDropAt(type, { x: event.clientX, y: event.clientY });
+      const state = useInteractionStore.getState();
+
+      if (plan.kind === "splice") {
+        if (state.spliceEdgeId !== plan.edgeId) setSpliceEdgeId(plan.edgeId);
+        if (state.ghost) setGhost(null);
+        if (state.dragPreview) setDragPreview(null);
         return;
       }
-      if (useInteractionStore.getState().spliceEdgeId) setSpliceEdgeId(null);
+      if (state.spliceEdgeId) setSpliceEdgeId(null);
 
-      // Otherwise preview the connection the drop would make, using a stand-in node at the cursor.
-      const previewPosition = {
-        x: centre.x - GHOST_NODE_SIZE.width / 2,
-        y: centre.y - GHOST_NODE_SIZE.height / 2,
-      };
-      const preview = virtualHandlePoints(DRAG_PREVIEW_ID, centre, GHOST_NODE_SIZE, ports, dir);
-      const previewNode = {
-        id: DRAG_PREVIEW_ID,
-        type: "pipelineNode",
-        position: previewPosition,
-        data: { nodeType: type, config: {} },
-      } as (typeof n)[number];
+      if (plan.kind === "place") {
+        if (state.ghost) setGhost(null);
+        if (state.dragPreview) setDragPreview(null);
+        return;
+      }
 
-      const candidate = findBestPair(preview, all, { nodes: [...n, previewNode], edges: e, entries }, dir);
-      const current = useInteractionStore.getState().ghost;
-      if (!sameCandidate(candidate, current)) setGhost(candidate);
-
-      // The stand-in has to be a real node on the canvas or the preview edge has nothing to
-      // attach to and React Flow drops it silently.
-      setDragPreview(candidate ? { type, position: previewPosition } : null);
+      // Show the stand-in where the node will actually land — snapped beside its new neighbour —
+      // with the preview edge drawn to it. Only replace the preview when it really moves, so
+      // React Flow isn't handed a new node object on every pointer event.
+      if (!sameCandidate(plan.candidate, state.ghost)) setGhost(plan.candidate);
+      const preview = state.dragPreview;
+      if (
+        !preview ||
+        preview.type !== type ||
+        preview.position.x !== plan.position.x ||
+        preview.position.y !== plan.position.y
+      ) {
+        setDragPreview({ type, position: plan.position });
+      }
     },
-    [screenToFlowPosition, collectCanvasPoints, setGhost, setSpliceEdgeId, setDragPreview],
+    [planDropAt, setGhost, setSpliceEdgeId, setDragPreview],
   );
 
   const onDragEnter = useCallback(() => setDropActive(true), []);
 
-  const onDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
-    // dragleave fires when crossing onto a child element too; ignore those.
-    if (event.currentTarget.contains(event.relatedTarget as globalThis.Node | null)) return;
-    setDropActive(false);
-    useInteractionStore.getState().setGhost(null);
-    useInteractionStore.getState().setSpliceEdgeId(null);
-  }, []);
+  const onDragLeave = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      // dragleave also fires when the pointer crosses onto a child element. `relatedTarget` would
+      // say which, but Safari reports it as null for drag events, so judge by pointer position.
+      const rect = event.currentTarget.getBoundingClientRect();
+      const inside =
+        event.clientX > rect.left &&
+        event.clientX < rect.right &&
+        event.clientY > rect.top &&
+        event.clientY < rect.bottom;
+      if (inside) return;
+      setDropActive(false);
+      clearDropPreview();
+    },
+    [clearDropPreview],
+  );
 
   const onDrop = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
@@ -188,28 +251,28 @@ export function Canvas() {
       const type =
         event.dataTransfer.getData("application/pipeline-node-type") ||
         useInteractionStore.getState().paletteDragType;
-      const pendingGhost = useInteractionStore.getState().ghost;
-      const pendingSplice = useInteractionStore.getState().spliceEdgeId;
+      clearDropPreview();
       clearInteraction();
       if (!type) return;
 
-      const centre = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      const position = { x: centre.x - GHOST_NODE_SIZE.width / 2, y: centre.y - GHOST_NODE_SIZE.height / 2 };
+      // Re-plan from the release point rather than trusting whatever the last dragover stored.
+      const plan = planDropAt(type, { x: event.clientX, y: event.clientY });
 
-      if (pendingSplice && insertNodeOnEdge(pendingSplice, type, position)) return;
+      if (plan.kind === "splice" && insertNodeOnEdge(plan.edgeId, type, plan.position)) return;
 
-      const newId = addNode(type, position);
-      if (pendingGhost) {
-        // The preview was made against a stand-in id; retarget it at the node that now exists.
-        const c = pendingGhost.connection;
-        onConnect({
-          ...c,
-          source: c.source === DRAG_PREVIEW_ID ? newId : c.source,
-          target: c.target === DRAG_PREVIEW_ID ? newId : c.target,
-        });
-      }
+      const newId = addNode(type, plan.position);
+      if (plan.kind !== "connect") return;
+
+      // The plan was made against a stand-in id; retarget it at the node that now exists.
+      const { connection: c, mine, theirs } = plan.candidate;
+      onConnect({
+        ...c,
+        source: c.source === DRAG_PREVIEW_ID ? newId : c.source,
+        target: c.target === DRAG_PREVIEW_ID ? newId : c.target,
+      });
+      setPendingSnap({ nodeId: newId, handleType: mine.type, handleId: mine.handleId, theirs });
     },
-    [screenToFlowPosition, clearInteraction, insertNodeOnEdge, addNode, onConnect],
+    [planDropAt, clearDropPreview, clearInteraction, insertNodeOnEdge, addNode, onConnect, setPendingSnap],
   );
 
   const onNodeClick = useCallback<NodeMouseHandler>(
@@ -253,8 +316,12 @@ export function Canvas() {
 
   // Both the ghost edge and the drag stand-in live only in the render arrays — never in the
   // editor store, so neither can reach the exported pipeline JSON or the preview panel.
+  // The stand-in is given its size and handle bounds up front. It's re-created whenever it moves,
+  // and React Flow discards measurements for a new node object that doesn't carry them — so a
+  // measured-only stand-in would flicker and its preview edge would never get drawn.
   const renderedNodes = useMemo(() => {
     if (!dragPreview) return nodes;
+    const ports = portsForEntry(catalogueEntries.find((e) => e.type === dragPreview.type));
     return [
       ...nodes,
       {
@@ -262,13 +329,17 @@ export function Canvas() {
         type: "pipelineNode",
         position: dragPreview.position,
         data: { nodeType: dragPreview.type, config: {} },
+        width: GHOST_NODE_SIZE.width,
+        height: GHOST_NODE_SIZE.height,
+        measured: GHOST_NODE_SIZE,
+        handles: previewHandles(GHOST_NODE_SIZE, ports, flowDirection),
         draggable: false,
         selectable: false,
         deletable: false,
         className: "node-drag-preview",
       } as (typeof nodes)[number],
     ];
-  }, [nodes, dragPreview]);
+  }, [nodes, dragPreview, catalogueEntries, flowDirection]);
 
   const renderedEdges = useMemo(() => {
     const marked = spliceEdgeId
