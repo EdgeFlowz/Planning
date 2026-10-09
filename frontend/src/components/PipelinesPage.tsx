@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { pipelines as pipelinesApi } from "../lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { jobs, pipelines as pipelinesApi } from "../lib/api";
 import { navigate } from "../lib/route";
 import { useEditorStore } from "../store/editorStore";
 import type { Pipeline } from "../types/api";
 import { AppNav } from "./AppNav";
+import { PipelineRunControl } from "./PipelineRunControl";
 
 type SortKey = "updated" | "created" | "name";
 
@@ -66,6 +67,9 @@ export function PipelinesPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  /** Job started from this page for each pipeline id; its row polls and shows the status. */
+  const [runJobIds, setRunJobIds] = useState<Record<string, string>>({});
+  const [startingRunId, setStartingRunId] = useState<string | null>(null);
 
   // Relative times ("5 minutes ago") are computed against this, refreshed each minute.
   const [now, setNow] = useState(() => Date.now());
@@ -133,6 +137,24 @@ export function PipelinesPage() {
     resetEditor();
     navigate("editor");
   };
+
+  const handleRun = async (pipeline: Pipeline) => {
+    setStartingRunId(pipeline.id);
+    setActionError(null);
+    try {
+      const saved = await pipelinesApi.latestVersion(pipeline.id);
+      // The worker attaches the run to the pipeline whose id is in the definition. Older saves
+      // stored the name there, so always send the database id.
+      const job = await jobs.submit(saved.name, { ...saved.definition, pipeline_id: pipeline.id });
+      setRunJobIds((current) => ({ ...current, [pipeline.id]: job.id }));
+    } catch (err) {
+      setActionError(`Couldn't run "${pipeline.name}": ${err instanceof Error ? err.message : "unknown error"}`);
+    } finally {
+      setStartingRunId(null);
+    }
+  };
+
+  const reportRunError = useCallback((message: string) => setActionError(message), []);
 
   const handleOpen = async (pipeline: Pipeline) => {
     if (openingId) return;
@@ -359,13 +381,22 @@ export function PipelinesPage() {
                               </button>
                             </span>
                           ) : (
-                            <button
-                              className="pipeline-delete"
-                              onClick={() => setConfirmingId(p.id)}
-                              aria-label={`Delete ${p.name}`}
-                            >
-                              Delete
-                            </button>
+                            <>
+                              <PipelineRunControl
+                                pipelineName={p.name}
+                                jobId={runJobIds[p.id] ?? null}
+                                starting={startingRunId === p.id}
+                                onRun={() => handleRun(p)}
+                                onError={reportRunError}
+                              />
+                              <button
+                                className="pipeline-delete"
+                                onClick={() => setConfirmingId(p.id)}
+                                aria-label={`Delete ${p.name}`}
+                              >
+                                Delete
+                              </button>
+                            </>
                           )}
                         </td>
                       </tr>
