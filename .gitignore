@@ -49,3 +49,6 @@ build/
 # OS
 .DS_Store
 .env
+
+# Files uploaded through the API at runtime
+backend/uploads/
