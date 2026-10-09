@@ -220,3 +220,45 @@ class ValidationResponse(BaseModel):
     valid: bool
     errors: list[ValidationIssueResponse]
     warnings: list[ValidationIssueResponse]
+
+
+# ============================================================================
+# Job Responses (Async Execution)
+# ============================================================================
+
+class JobSubmitRequest(BaseModel):
+    """Request to submit a pipeline for async execution."""
+
+    display_name: str
+    pipeline_definition: dict
+
+
+class JobResponse(BaseModel):
+    """Job status and metadata."""
+
+    id: str
+    display_name: str
+    status: str
+    result: dict | None = None
+    error: str | None = None
+    retry_count: int
+    max_retries: int
+    created_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    cancelled_at: str | None = None
+
+
+class JobListResponse(BaseModel):
+    """Paginated list of jobs."""
+
+    jobs: list[JobResponse]
+    total: int
+    skip: int
+    limit: int
+
+
+class JobCancelRequest(BaseModel):
+    """Request to cancel a job."""
+
+    reason: str = "User requested cancellation"
