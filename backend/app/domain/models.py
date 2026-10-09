@@ -63,12 +63,14 @@ class PipelineRunStatus(StrEnum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class PipelineRun(BaseModel):
     id: str
     pipeline_id: str
     pipeline_version: int
+    job_id: str | None = None
 
     status: PipelineRunStatus = PipelineRunStatus.QUEUED
 
@@ -84,6 +86,7 @@ class NodeRunStatus(StrEnum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class NodeRun(BaseModel):
@@ -113,3 +116,35 @@ class Connection(BaseModel):
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
+
+
+class JobStatus(StrEnum):
+    """Status states for async pipeline execution jobs."""
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class Job(BaseModel):
+    """Represents an async pipeline execution job.
+    
+    Jobs are created when a pipeline is submitted for execution via the job queue.
+    They progress through states: queued → running → succeeded/failed/cancelled
+    """
+    id: str
+    display_name: str
+    pipeline_definition: PipelineDefinition
+    status: JobStatus = JobStatus.QUEUED
+    result: dict | None = None
+    error: str | None = None
+    retry_count: int = 0
+    max_retries: int = 3
+    
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    cancelled_at: datetime | None = None

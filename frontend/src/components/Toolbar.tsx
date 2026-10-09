@@ -4,9 +4,12 @@ import { useCatalogueStore } from "../store/catalogueStore";
 import { validatePipeline } from "../lib/graph";
 import { toPipelineDefinition, downloadJson } from "../lib/serialize";
 import { parseCsvText } from "../lib/csv";
-import { execution } from "../lib/api";
+import { jobs } from "../lib/api";
+import { useJobPolling } from "../hooks/useJobPolling";
+import { JobHistory } from "./JobHistory";
 import type { PipelineDefinition } from "../types/pipeline";
-import type { NodeResult } from "../types/api";
+
+const ACTIVE_STATUSES = ["queued", "running"];
 
 export function Toolbar() {
   const pipelineId = useEditorStore((s) => s.pipelineId);
@@ -22,11 +25,15 @@ export function Toolbar() {
   const savePipelineToDatabase = useEditorStore((s) => s.savePipelineToDatabase);
   const catalogueEntries = useCatalogueStore((s) => s.entries);
 
-  const [running, setRunning] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [results, setResults] = useState<NodeResult[] | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const { job, error: pollError } = useJobPolling(activeJobId);
+  const jobIsActive = job !== null && ACTIVE_STATUSES.includes(job.status);
 
   const definition = useMemo(
     () => toPipelineDefinition(pipelineId, nodes, edges),
@@ -65,21 +72,27 @@ export function Toolbar() {
   };
 
   const handleRunPipeline = async () => {
-    setRunning(true);
+    setSubmitting(true);
     setError(null);
-    setResults(null);
+    setActiveJobId(null);
 
     try {
-      const response = await execution.run(definition);
-      
-      // New v1 format returns { run: {...}, node_results: [...] }
-      // Extract node_results for backward compatibility with existing display
-      const nodeResults: NodeResult[] = response.node_results || [];
-      setResults(nodeResults);
+      const submitted = await jobs.submit(pipelineId || "Untitled Pipeline", definition);
+      setActiveJobId(submitted.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Pipeline execution failed");
+      setError(err instanceof Error ? err.message : "Failed to submit pipeline job");
     } finally {
-      setRunning(false);
+      setSubmitting(false);
+    }
+  };
+
+  const handleCancelJob = async () => {
+    if (!activeJobId) return;
+
+    try {
+      await jobs.cancel(activeJobId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to cancel job");
     }
   };
 
@@ -95,6 +108,14 @@ export function Toolbar() {
     const sourceNode = exampleDefinition.nodes.find((n) => n.type === "source.csv");
     loadPipeline(exampleDefinition, sourceNode ? { [sourceNode.id]: table } : {});
   };
+
+  const runButtonLabel = submitting
+    ? "Submitting..."
+    : job?.status === "queued"
+      ? "⏳ Queued..."
+      : job?.status === "running"
+        ? "▶ Running..."
+        : "▶ Run Pipeline";
 
   return (
     <header className="toolbar">
@@ -126,6 +147,14 @@ export function Toolbar() {
         </button>
         <button onClick={handleLoadExample}>Load Example</button>
         <button onClick={reset}>Reset</button>
+        <button
+          className={`toolbar-toggle${historyOpen ? " on" : ""}`}
+          onClick={() => setHistoryOpen((o) => !o)}
+          aria-pressed={historyOpen}
+          title="View past job runs"
+        >
+          🕘 History
+        </button>
         <button className="primary-button" onClick={handleExport}>
           Export JSON
         </button>
@@ -140,12 +169,19 @@ export function Toolbar() {
         <button
           className="primary-button"
           onClick={handleRunPipeline}
-          disabled={running || issues.length > 0}
-          title={issues.length > 0 ? "Fix validation issues before running" : "Execute the pipeline"}
+          disabled={submitting || jobIsActive || issues.length > 0}
+          title={issues.length > 0 ? "Fix validation issues before running" : "Submit the pipeline for execution"}
         >
-          {running ? "Running..." : "▶ Run Pipeline"}
+          {runButtonLabel}
         </button>
+        {jobIsActive && (
+          <button className="toolbar-toggle" onClick={handleCancelJob} title="Cancel the running job">
+            ✕ Cancel
+          </button>
+        )}
       </div>
+
+      {historyOpen && <JobHistory onClose={() => setHistoryOpen(false)} />}
 
       {issues.length > 0 && (
         <ul className="validation-issues">
@@ -155,9 +191,9 @@ export function Toolbar() {
         </ul>
       )}
 
-      {error && (
+      {(error || pollError || job?.error) && (
         <div className="execution-error">
-          ❌ {error}
+          ❌ {error || pollError || job?.error}
         </div>
       )}
 
@@ -167,11 +203,15 @@ export function Toolbar() {
         </div>
       )}
 
-      {results && (
+      {job?.status === "cancelled" && (
+        <div className="execution-error">Job cancelled</div>
+      )}
+
+      {job?.status === "succeeded" && job.result && (
         <div className="execution-results">
           <h3>✓ Pipeline executed successfully</h3>
           <div className="results-grid">
-            {results.map((result, i) => (
+            {job.result.node_results.map((result, i) => (
               <div key={i} className="result-card">
                 <div className="result-node">
                   <strong>{result.node_id}</strong> <small>({result.node_type})</small>
@@ -187,3 +227,4 @@ export function Toolbar() {
     </header>
   );
 }
+

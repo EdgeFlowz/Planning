@@ -107,6 +107,12 @@ class PipelineRun(Base):
         nullable=False,
     )
 
+    job_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("jobs.id"),
+        unique=True,
+    )
+
     status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
@@ -137,6 +143,8 @@ class PipelineRun(Base):
         back_populates="pipeline_run",
         cascade="all, delete-orphan",
     )
+
+    job: Mapped["Job | None"] = relationship(back_populates="pipeline_run")
 
 
 class NodeRun(Base):
@@ -225,4 +233,75 @@ class Connection(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
+    )
+
+
+class Job(Base):
+    """Represents an async pipeline execution job.
+    
+    Jobs are created when a pipeline is submitted for execution.
+    They progress through states: queued → running → succeeded/failed/cancelled
+    """
+    __tablename__ = "jobs"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+
+    display_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    pipeline_definition: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="queued",
+    )
+
+    result: Mapped[dict | None] = mapped_column(
+        JSONB,
+    )
+
+    error: Mapped[str | None] = mapped_column(
+        Text,
+    )
+
+    retry_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+    )
+
+    max_retries: Mapped[int] = mapped_column(
+        Integer,
+        default=3,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+
+    pipeline_run: Mapped["PipelineRun | None"] = relationship(
+        back_populates="job",
+        uselist=False,
     )
