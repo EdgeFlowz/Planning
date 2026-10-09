@@ -1579,3 +1579,87 @@
   background: #78350f;
   color: #fde68a;
 }
+
+/* Run control in each pipelines-page row: status pill + ▶ Run / ■ Stop. */
+.pipeline-actions > * + * {
+  margin-left: 0.4rem;
+}
+
+.pipeline-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pipeline-actions .pipeline-run-button {
+  min-width: 4.6rem;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.pipeline-actions .pipeline-run-button:hover:not(:disabled) {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.pipeline-actions .pipeline-run-button.stop {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.pipeline-actions .pipeline-run-button.stop:hover:not(:disabled) {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.pipeline-run-status {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.run-queued {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.run-running {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.run-succeeded {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.run-failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.run-cancelled {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .run-running {
+    animation: run-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes run-pulse {
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Reserve room for a run status pill so starting a run doesn't shift the other columns. */
+.pipelines-table td.pipeline-actions {
+  min-width: 17rem;
+}
