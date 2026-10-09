@@ -10,7 +10,7 @@
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 1.25rem;
+  gap: 0.9rem;
   padding: 0.6rem 1rem;
   background: #1f2937;
   color: #fff;
@@ -39,7 +39,7 @@
   background: #111827;
   color: #fff;
   font-size: 0.85rem;
-  min-width: 180px;
+  min-width: 150px;
 }
 
 .validation-badge {
@@ -61,12 +61,12 @@
 
 .toolbar-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
   margin-left: auto;
 }
 
 .toolbar-actions button {
-  padding: 0.4rem 0.85rem;
+  padding: 0.4rem 0.6rem;
   border-radius: 6px;
   border: 1px solid #475569;
   background: #374151;
@@ -1122,4 +1122,460 @@
 .result-columns {
   color: #606f7b;
   font-size: 0.7rem;
+}
+
+.execution-success {
+  margin-top: 0.75rem;
+  padding: 0.6rem;
+  background: #dcfce7;
+  color: #166534;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  width: 100%;
+}
+
+.execution-success a {
+  color: inherit;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Top-level navigation (Editor / Pipelines)
+   --------------------------------------------------------------------------------------------- */
+
+.app-nav {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  background: #111827;
+  border-radius: 8px;
+}
+
+.app-nav-link {
+  padding: 0.3rem 0.8rem;
+  border-radius: 6px;
+  color: #cbd5e1;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.app-nav-link:hover {
+  color: #fff;
+  background: #1f2937;
+}
+
+.app-nav-link.active {
+  color: #fff;
+  background: #374151;
+}
+
+.app-nav-link:focus-visible,
+.pipelines-page :is(button, input, select):focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Pipelines page
+   --------------------------------------------------------------------------------------------- */
+
+.pipelines-page {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.pipelines-container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+.pipelines-heading h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.pipelines-subtitle {
+  margin: 0.25rem 0 1.25rem;
+  color: #64748b;
+}
+
+.pipelines-controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.pipelines-search {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+}
+
+.pipelines-search input {
+  width: 100%;
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+}
+
+.pipelines-search-hint {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0 0.35rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  color: #94a3b8;
+  font: 0.75rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+}
+
+.pipelines-sort {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+.pipelines-sort select,
+.pipelines-refresh,
+.pipelines-secondary,
+.pipeline-actions button,
+.pipelines-banner button {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #1e293b;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.pipelines-refresh:hover:not(:disabled),
+.pipelines-secondary:hover,
+.pipeline-actions button:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.pipelines-page button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.pipelines-primary {
+  padding: 0.5rem 1rem;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pipelines-primary:hover {
+  background: #1d4ed8;
+}
+
+.pipelines-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.pipelines-banner.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.pipelines-banner button {
+  padding: 0.1rem 0.45rem;
+  background: transparent;
+  border-color: transparent;
+  color: inherit;
+}
+
+.pipelines-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.pipelines-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.pipelines-table th {
+  padding: 0.6rem 1rem;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.pipelines-table td {
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.pipelines-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.pipelines-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.pipelines-table tbody tr.confirming {
+  background: #fef2f2;
+}
+
+.pipelines-table td:first-child {
+  width: 100%;
+  white-space: normal;
+}
+
+.pipeline-row {
+  cursor: pointer;
+}
+
+.pipeline-row.confirming {
+  cursor: default;
+}
+
+.pipeline-row.opening {
+  background: #eff6ff !important;
+}
+
+.pipeline-name {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.pipeline-name:disabled {
+  opacity: 1 !important;
+  cursor: inherit !important;
+}
+
+.pipeline-row:hover .pipeline-name:not(:disabled) {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pipeline-opening {
+  color: #2563eb;
+  font-weight: 500;
+}
+
+.pipeline-id {
+  margin-top: 0.15rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #94a3b8;
+  font: 0.75rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: copy;
+}
+
+.pipeline-id:hover {
+  color: #2563eb;
+}
+
+.pipeline-actions {
+  text-align: right;
+}
+
+.pipeline-delete {
+  color: #b91c1c !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+/* Revealed on row hover/focus so the list reads cleanly; always visible on touch screens. */
+.pipelines-table tr:hover .pipeline-delete,
+.pipeline-delete:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .pipeline-delete {
+    opacity: 1;
+  }
+}
+
+.pipeline-delete:hover {
+  background: #fee2e2 !important;
+}
+
+.pipeline-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #991b1b;
+  font-size: 0.85rem;
+}
+
+.pipeline-confirm .danger {
+  border-color: #dc2626;
+  background: #dc2626;
+  color: #fff;
+}
+
+.pipeline-confirm .danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.pipelines-empty {
+  padding: 3rem 1.5rem;
+  text-align: center;
+}
+
+.pipelines-empty h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+}
+
+.pipelines-empty p {
+  margin: 0 auto 1rem;
+  max-width: 440px;
+  color: #64748b;
+}
+
+.pipelines-empty-icon {
+  margin-bottom: 0.5rem;
+  font-size: 2rem;
+}
+
+.pipelines-empty-help {
+  font-size: 0.85rem;
+}
+
+.pipelines-skeleton-row {
+  display: flex;
+  gap: 2rem;
+  padding: 1rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.skeleton {
+  display: block;
+  height: 0.8rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 37%, #f1f5f9 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+.skeleton-name {
+  flex: 1;
+  max-width: 280px;
+}
+
+.skeleton-date {
+  width: 90px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .pipelines-container {
+    padding: 1.25rem 1rem 2rem;
+  }
+
+  /* Created is the least useful column on a narrow screen; hover titles still carry dates. */
+  .pipelines-table th:nth-child(3),
+  .pipelines-table td:nth-child(3) {
+    display: none;
+  }
+}
+
+/* Save status shown inline in the pipeline-name label, so it costs no toolbar width. */
+.toolbar-pipeline-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.save-status {
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.save-status-muted {
+  background: #374151;
+  color: #cbd5e1;
+}
+
+.save-status-ok {
+  background: #14532d;
+  color: #bbf7d0;
+}
+
+.save-status-warn {
+  background: #78350f;
+  color: #fde68a;
 }

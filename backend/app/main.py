@@ -392,6 +392,12 @@ class PipelineCreateRequest(BaseModel):
     definition: PipelineDefinition | None = None
 
 
+class PipelineVersionCreateRequest(BaseModel):
+    """Request to save a new version of an existing pipeline."""
+    definition: PipelineDefinition
+    name: str | None = None
+
+
 class PipelineUpdateRequest(BaseModel):
     """Request to update a pipeline."""
     name: str | None = None
@@ -435,12 +441,14 @@ def create_pipeline(
         updated_at=datetime.now(timezone.utc),
     )
     
-    # Use provided definition or create empty one
-    definition = req.definition if req.definition else PipelineDefinition(
+    # Use provided definition or create empty one. Either way it's stamped with the new
+    # pipeline's id, which is how the worker links runs back to this pipeline.
+    definition = (req.definition or PipelineDefinition(
+        schema_version=1,
         pipeline_id=pipeline.id,
         nodes=[],
         edges=[],
-    )
+    )).model_copy(update={"pipeline_id": pipeline.id})
     
     version = PipelineVersion(
         pipeline_id=pipeline.id,
@@ -455,6 +463,7 @@ def create_pipeline(
     return {
         "id": created.id,
         "name": created.name,
+        "version": version.version,
         "created_at": created.created_at.isoformat(),
         "updated_at": created.updated_at.isoformat(),
     }
@@ -682,6 +691,77 @@ def get_run(
             }
             for nr in node_runs
         ],
+    }
+
+
+@app.get(
+    "/v1/pipelines/{pipeline_id}/versions/latest",
+    tags=["Pipelines"],
+    summary="Get a pipeline's latest definition",
+    description="Return the pipeline's name and the definition from its most recent saved version, "
+                "so the editor can open it.",
+    response_model=dict,
+)
+def get_latest_pipeline_version(
+    pipeline_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Get the newest saved version of a pipeline, including its full definition."""
+    try:
+        uuid.UUID(pipeline_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    repo = PipelineRepository(db)
+    pipeline = repo.get(pipeline_id)
+    if not pipeline:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    version = repo.get_latest_version(pipeline_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="Pipeline has no saved versions")
+
+    return {
+        "pipeline_id": pipeline.id,
+        "name": pipeline.name,
+        "version": version.version,
+        "definition": version.definition.model_dump(),
+        "created_at": version.created_at.isoformat(),
+    }
+
+
+@app.post(
+    "/v1/pipelines/{pipeline_id}/versions",
+    tags=["Pipelines"],
+    summary="Save a new pipeline version",
+    description="Save a definition as the pipeline's next version (and optionally rename it). "
+                "A definition identical to the latest version is not saved again; "
+                "`created` reports which happened.",
+    response_model=dict,
+)
+def create_pipeline_version(
+    pipeline_id: str,
+    req: PipelineVersionCreateRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Save the editor's current definition as the next version of an existing pipeline."""
+    try:
+        uuid.UUID(pipeline_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    name = req.name.strip() if req.name else None
+    saved = PipelineRepository(db).save_version(pipeline_id, req.definition, name or None)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    pipeline, version, created = saved
+    return {
+        "pipeline_id": pipeline.id,
+        "name": pipeline.name,
+        "version": version.version,
+        "created": created,
+        "updated_at": pipeline.updated_at.isoformat(),
     }
 
 

@@ -47,8 +47,29 @@ function persist(key: string, value: string): void {
   }
 }
 
+/** What the last save did, for the toolbar's confirmation message. */
+export type SaveOutcome =
+  | { kind: "created"; name: string; version: number }
+  | { kind: "version"; name: string; version: number }
+  | { kind: "renamed"; name: string; version: number }
+  | { kind: "unchanged"; name: string; version: number };
+
 interface EditorState {
+  /**
+   * The pipeline's display name (the toolbar's name field). Historically also used as the
+   * definition's `pipeline_id`; once the pipeline is saved, `savedPipelineId` takes over that role.
+   */
   pipelineId: string;
+  /**
+   * Database id of the saved pipeline this canvas belongs to, or null if it hasn't been saved.
+   * Save adds a version to this pipeline, and it becomes the definition's `pipeline_id` so the
+   * worker attaches runs to it rather than creating a new pipeline per run.
+   */
+  savedPipelineId: string | null;
+  /** Latest saved version number of `savedPipelineId`. */
+  savedVersion: number | null;
+  /** Fingerprint of the name + definition as last saved or loaded, to detect unsaved changes. */
+  savedSnapshot: string | null;
   nodes: EditorNode[];
   edges: EditorEdge[];
   selectedNodeId: string | null;
@@ -86,9 +107,13 @@ interface EditorState {
   loadPipeline: (definition: PipelineDefinition, tables?: Record<string, ParsedCsv>) => void;
   reset: () => void;
 
-  // New API methods for database persistence
-  savePipelineToDatabase: (name: string) => Promise<string>;
-  loadPipelineFromDatabase: (id: string) => Promise<void>;
+  // Database persistence
+  /** Saves to the open pipeline as a new version, or creates the pipeline if it isn't saved yet. */
+  savePipeline: () => Promise<SaveOutcome>;
+  /** Always creates a new pipeline from the canvas, and makes it the open one. */
+  savePipelineAsNew: () => Promise<SaveOutcome>;
+  /** Replaces the canvas with a saved pipeline's latest version; resolves to its name. */
+  loadPipelineFromDatabase: (id: string) => Promise<string>;
   listPipelinesFromDatabase: (skip?: number, limit?: number) => Promise<any>;
   deletePipelineFromDatabase: (id: string) => Promise<void>;
 }
@@ -97,8 +122,25 @@ function shortTypeName(type: string): string {
   return type.split(".")[1] ?? type.split(".")[0];
 }
 
+/** The definition the editor currently represents, keyed by the saved pipeline when there is one. */
+export function currentDefinition(
+  state: Pick<EditorState, "pipelineId" | "savedPipelineId" | "nodes" | "edges">,
+): PipelineDefinition {
+  return toPipelineDefinition(state.savedPipelineId ?? state.pipelineId, state.nodes, state.edges);
+}
+
+/** Compares name + definition, so renaming counts as an unsaved change too. */
+export function snapshotOf(
+  state: Pick<EditorState, "pipelineId" | "savedPipelineId" | "nodes" | "edges">,
+): string {
+  return JSON.stringify({ name: state.pipelineId.trim(), definition: currentDefinition(state) });
+}
+
 const initial = {
   pipelineId: "sales-example",
+  savedPipelineId: null as string | null,
+  savedVersion: null as number | null,
+  savedSnapshot: null as string | null,
   nodes: [] as EditorNode[],
   edges: [] as EditorEdge[],
   selectedNodeId: null as string | null,
@@ -272,6 +314,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     set({
       pipelineId: definition.pipeline_id,
+      // A definition loaded this way (example, import) isn't tied to a saved pipeline;
+      // `loadPipelineFromDatabase` re-links it afterwards.
+      savedPipelineId: null,
+      savedVersion: null,
+      savedSnapshot: null,
       nodes,
       edges,
       selectedNodeId: null,
@@ -280,22 +327,51 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  // Save current pipeline to database
-  savePipelineToDatabase: async (name: string) => {
+  savePipeline: async () => {
     const state = get();
-    // Build the full pipeline definition with current nodes and edges
-    const definition = toPipelineDefinition(state.pipelineId, state.nodes, state.edges);
-    // Send to backend with definition
-    const result = await pipelinesApi.create(name, definition);
-    set({ pipelineId: result.id });
-    return result.id;
+    if (!state.savedPipelineId) return get().savePipelineAsNew();
+
+    const name = state.pipelineId.trim();
+    const hadChanges = state.savedSnapshot !== snapshotOf(state);
+    const saved = await pipelinesApi.saveVersion(state.savedPipelineId, name, currentDefinition(state));
+    set({
+      pipelineId: saved.name,
+      savedVersion: saved.version,
+      // Fingerprint what was sent, not the live state, so edits made mid-request still show
+      // as unsaved.
+      savedSnapshot: snapshotOf({ ...state, pipelineId: saved.name }),
+    });
+    // No new version means the graph matched the latest one; if anything changed, it was the name.
+    const kind = saved.created ? "version" : hadChanges ? "renamed" : "unchanged";
+    return { kind, name: saved.name, version: saved.version };
+  },
+
+  savePipelineAsNew: async () => {
+    const state = get();
+    const name = state.pipelineId.trim();
+    const created = await pipelinesApi.create(name, currentDefinition(state));
+    set({
+      pipelineId: created.name,
+      savedPipelineId: created.id,
+      savedVersion: created.version,
+      savedSnapshot: snapshotOf({ ...state, pipelineId: created.name, savedPipelineId: created.id }),
+    });
+    return { kind: "created", name: created.name, version: created.version };
   },
 
   // Load pipeline from database
   loadPipelineFromDatabase: async (id: string) => {
-    const result = await pipelinesApi.get(id);
-    set({ pipelineId: result.id });
-    // Note: In production, you'd also fetch the pipeline definition and load it
+    const saved = await pipelinesApi.latestVersion(id);
+    // Node config defaults and port shapes come from the catalogue, which normally loads with
+    // the editor — make sure it's there when opening straight from the pipelines page.
+    await useCatalogueStore.getState().load();
+    // Saved definitions carry no positions, so this lays the nodes out like "Load Example".
+    // Uploaded CSVs aren't stored with the pipeline, so the data preview starts empty.
+    get().loadPipeline(saved.definition);
+    // The name field shows the pipeline's name; its database id links Save and Run back to it.
+    set({ pipelineId: saved.name, savedPipelineId: saved.pipeline_id, savedVersion: saved.version });
+    set({ savedSnapshot: snapshotOf(get()) });
+    return saved.name;
   },
 
   // List all pipelines from database

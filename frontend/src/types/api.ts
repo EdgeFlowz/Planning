@@ -1,3 +1,5 @@
+import type { PipelineDefinition } from "./pipeline";
+
 // Legacy format (for backward compatibility)
 export interface NodeResult {
   node_id: string;
@@ -69,6 +71,30 @@ export interface Pipeline {
   id: string;
   name: string;
   created_at: string;
+  updated_at: string;
+}
+
+/** GET /v1/pipelines/{id}/versions/latest */
+export interface PipelineVersionDetail {
+  pipeline_id: string;
+  name: string;
+  version: number;
+  definition: PipelineDefinition;
+  created_at: string;
+}
+
+/** POST /v1/pipelines */
+export interface PipelineCreated extends Pipeline {
+  version: number;
+}
+
+/** POST /v1/pipelines/{id}/versions */
+export interface PipelineVersionSaved {
+  pipeline_id: string;
+  name: string;
+  version: number;
+  /** False when the definition matched the latest version, so no new version was stored. */
+  created: boolean;
   updated_at: string;
 }
 
