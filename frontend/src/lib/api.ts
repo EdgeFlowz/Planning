@@ -1,5 +1,5 @@
 import type { PipelineDefinition } from "../types/pipeline";
-import type { NodeResult, Pipeline, PipelineListResponse, PipelineRun } from "../types/api";
+import type { Job, JobListResponse, NodeResult, Pipeline, PipelineListResponse, PipelineRun } from "../types/api";
 
 // Vite proxies /api/* to the backend and strips the /api prefix (see vite.config.ts).
 const BASE = "/api/v1";
@@ -52,6 +52,24 @@ export const files = {
 export const execution = {
   run(definition: PipelineDefinition): Promise<PipelineRunResult> {
     return request<PipelineRunResult>("/pipelines/run", json("POST", definition));
+  },
+};
+
+export const jobs = {
+  submit(displayName: string, definition: PipelineDefinition): Promise<Job> {
+    return request<Job>("/jobs", json("POST", { display_name: displayName, pipeline_definition: definition }));
+  },
+  get(id: string): Promise<Job> {
+    return request<Job>(`/jobs/${encodeURIComponent(id)}`);
+  },
+  list(skip = 0, limit = 10, status?: Job["status"]): Promise<JobListResponse> {
+    const query = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+    if (status) query.set("status", status);
+    return request<JobListResponse>(`/jobs?${query}`);
+  },
+  // The endpoint takes a JSON body even though `reason` is optional, so always send one.
+  cancel(id: string, reason?: string): Promise<{ job_id: string; cancelled: boolean; reason: string }> {
+    return request(`/jobs/${encodeURIComponent(id)}`, json("DELETE", reason ? { reason } : {}));
   },
 };
 
