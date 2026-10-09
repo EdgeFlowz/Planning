@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
-import { useEditorStore } from "../store/editorStore";
+import { currentDefinition, snapshotOf, useEditorStore, type SaveOutcome } from "../store/editorStore";
 import { useCatalogueStore } from "../store/catalogueStore";
 import { validatePipeline } from "../lib/graph";
-import { toPipelineDefinition, downloadJson } from "../lib/serialize";
+import { downloadJson } from "../lib/serialize";
 import { parseCsvText } from "../lib/csv";
 import { jobs } from "../lib/api";
 import { useJobPolling } from "../hooks/useJobPolling";
 import { JobHistory } from "./JobHistory";
+import { AppNav } from "./AppNav";
+import { hrefFor } from "../lib/route";
 import type { PipelineDefinition } from "../types/pipeline";
 
 const ACTIVE_STATUSES = ["queued", "running"];
@@ -22,7 +24,11 @@ export function Toolbar() {
   const setFlowDirection = useEditorStore((s) => s.setFlowDirection);
   const snapEnabled = useEditorStore((s) => s.snapEnabled);
   const setSnapEnabled = useEditorStore((s) => s.setSnapEnabled);
-  const savePipelineToDatabase = useEditorStore((s) => s.savePipelineToDatabase);
+  const savedPipelineId = useEditorStore((s) => s.savedPipelineId);
+  const savedVersion = useEditorStore((s) => s.savedVersion);
+  const savedSnapshot = useEditorStore((s) => s.savedSnapshot);
+  const savePipeline = useEditorStore((s) => s.savePipeline);
+  const savePipelineAsNew = useEditorStore((s) => s.savePipelineAsNew);
   const catalogueEntries = useCatalogueStore((s) => s.entries);
 
   const [saving, setSaving] = useState(false);
@@ -36,9 +42,20 @@ export function Toolbar() {
   const jobIsActive = job !== null && ACTIVE_STATUSES.includes(job.status);
 
   const definition = useMemo(
-    () => toPipelineDefinition(pipelineId, nodes, edges),
-    [pipelineId, nodes, edges],
+    () => currentDefinition({ pipelineId, savedPipelineId, nodes, edges }),
+    [pipelineId, savedPipelineId, nodes, edges],
   );
+
+  const hasUnsavedChanges = useMemo(
+    () => savedSnapshot !== snapshotOf({ pipelineId, savedPipelineId, nodes, edges }),
+    [savedSnapshot, pipelineId, savedPipelineId, nodes, edges],
+  );
+
+  const saveStatus = !savedPipelineId
+    ? { text: "Not saved", tone: "muted" }
+    : hasUnsavedChanges
+      ? { text: "Unsaved changes", tone: "warn" }
+      : { text: `Saved · v${savedVersion}`, tone: "ok" };
 
   const issues = useMemo(
     () => validatePipeline(definition.nodes, definition.edges, catalogueEntries),
@@ -49,7 +66,20 @@ export function Toolbar() {
     downloadJson(`${pipelineId || "pipeline"}.json`, definition);
   };
 
-  const handleSavePipeline = async () => {
+  const describeSave = (outcome: SaveOutcome): string => {
+    switch (outcome.kind) {
+      case "created":
+        return `Saved "${outcome.name}" as a new pipeline`;
+      case "version":
+        return `Saved "${outcome.name}" as version ${outcome.version}`;
+      case "renamed":
+        return `Renamed to "${outcome.name}" (still version ${outcome.version})`;
+      case "unchanged":
+        return `No changes since version ${outcome.version} of "${outcome.name}"`;
+    }
+  };
+
+  const runSave = async (save: () => Promise<SaveOutcome>) => {
     if (!pipelineId.trim()) {
       setError("Please enter a pipeline name before saving");
       return;
@@ -60,10 +90,8 @@ export function Toolbar() {
     setSaveSuccess(null);
 
     try {
-      await savePipelineToDatabase(pipelineId);
-      setSaveSuccess(`Pipeline "${pipelineId}" saved successfully`);
-      // Clear success message after 3 seconds
-      setTimeout(() => setSaveSuccess(null), 3000);
+      setSaveSuccess(describeSave(await save()));
+      setTimeout(() => setSaveSuccess(null), 4000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save pipeline");
     } finally {
@@ -120,8 +148,14 @@ export function Toolbar() {
   return (
     <header className="toolbar">
       <div className="toolbar-title">Pipeline Builder</div>
+      <AppNav />
       <label className="toolbar-pipeline-id">
-        Pipeline ID
+        <span className="toolbar-pipeline-label">
+          Pipeline name
+          <span className={`save-status save-status-${saveStatus.tone}`} aria-live="polite">
+            {saveStatus.text}
+          </span>
+        </span>
         <input value={pipelineId} onChange={(e) => setPipelineId(e.target.value)} />
       </label>
 
@@ -160,12 +194,25 @@ export function Toolbar() {
         </button>
         <button
           className="primary-button"
-          onClick={handleSavePipeline}
+          onClick={() => runSave(savePipeline)}
           disabled={saving}
-          title="Save pipeline to database"
+          title={
+            savedPipelineId
+              ? `Save as the next version of "${pipelineId.trim() || "this pipeline"}"`
+              : "Save this pipeline to the database"
+          }
         >
-          {saving ? "Saving..." : "💾 Save Pipeline"}
+          {saving ? "Saving..." : "💾 Save"}
         </button>
+        {savedPipelineId && (
+          <button
+            onClick={() => runSave(savePipelineAsNew)}
+            disabled={saving}
+            title="Save a copy as a separate pipeline, leaving the original unchanged"
+          >
+            Save copy
+          </button>
+        )}
         <button
           className="primary-button"
           onClick={handleRunPipeline}
@@ -199,7 +246,7 @@ export function Toolbar() {
 
       {saveSuccess && (
         <div className="execution-success">
-          {saveSuccess}
+          {saveSuccess} — <a href={hrefFor("pipelines")}>view all pipelines</a>
         </div>
       )}
 

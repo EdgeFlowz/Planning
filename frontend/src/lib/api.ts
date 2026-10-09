@@ -1,5 +1,15 @@
 import type { PipelineDefinition } from "../types/pipeline";
-import type { Job, JobListResponse, NodeResult, Pipeline, PipelineListResponse, PipelineRun } from "../types/api";
+import type {
+  Job,
+  JobListResponse,
+  NodeResult,
+  Pipeline,
+  PipelineCreated,
+  PipelineListResponse,
+  PipelineRun,
+  PipelineVersionSaved,
+  PipelineVersionDetail,
+} from "../types/api";
 
 // Vite proxies /api/* to the backend and strips the /api prefix (see vite.config.ts).
 const BASE = "/api/v1";
@@ -74,14 +84,32 @@ export const jobs = {
 };
 
 export const pipelines = {
-  create(name: string, definition?: PipelineDefinition): Promise<Pipeline> {
-    return request<Pipeline>("/pipelines", json("POST", { name, definition }));
+  create(name: string, definition?: PipelineDefinition): Promise<PipelineCreated> {
+    return request<PipelineCreated>("/pipelines", json("POST", { name, definition }));
+  },
+  /** Saves `definition` as the pipeline's next version (no-op if unchanged) and applies `name`. */
+  saveVersion(id: string, name: string, definition: PipelineDefinition): Promise<PipelineVersionSaved> {
+    return request<PipelineVersionSaved>(`/pipelines/${encodeURIComponent(id)}/versions`, json("POST", { name, definition }));
   },
   get(id: string): Promise<Pipeline> {
     return request<Pipeline>(`/pipelines/${encodeURIComponent(id)}`);
   },
+  /** The pipeline's name and the definition from its most recent saved version. */
+  latestVersion(id: string): Promise<PipelineVersionDetail> {
+    return request<PipelineVersionDetail>(`/pipelines/${encodeURIComponent(id)}/versions/latest`);
+  },
   list(skip = 0, limit = 10): Promise<PipelineListResponse> {
     return request<PipelineListResponse>(`/pipelines?skip=${skip}&limit=${limit}`);
+  },
+  /** Every saved pipeline, fetched page by page so callers can search and sort the full set. */
+  async listAll(pageSize = 100): Promise<Pipeline[]> {
+    const byId = new Map<string, Pipeline>();
+    for (let skip = 0; ; skip += pageSize) {
+      const page = await pipelines.list(skip, pageSize);
+      for (const p of page.pipelines) byId.set(p.id, p);
+      if (page.pipelines.length < pageSize || skip + pageSize >= page.total) break;
+    }
+    return [...byId.values()];
   },
   delete(id: string): Promise<{ deleted: boolean; pipeline_id: string }> {
     return request(`/pipelines/${encodeURIComponent(id)}`, { method: "DELETE" });

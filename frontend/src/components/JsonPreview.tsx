@@ -1,15 +1,15 @@
 import { useMemo } from "react";
-import { useEditorStore } from "../store/editorStore";
-import { toPipelineDefinition } from "../lib/serialize";
+import { currentDefinition, useEditorStore } from "../store/editorStore";
 
 export function JsonPreview() {
   const pipelineId = useEditorStore((s) => s.pipelineId);
+  const savedPipelineId = useEditorStore((s) => s.savedPipelineId);
   const nodes = useEditorStore((s) => s.nodes);
   const edges = useEditorStore((s) => s.edges);
 
   const json = useMemo(
-    () => JSON.stringify(toPipelineDefinition(pipelineId, nodes, edges), null, 2),
-    [pipelineId, nodes, edges],
+    () => JSON.stringify(currentDefinition({ pipelineId, savedPipelineId, nodes, edges }), null, 2),
+    [pipelineId, savedPipelineId, nodes, edges],
   );
 
   return (
