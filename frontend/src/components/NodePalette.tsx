@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useState, type DragEvent } from "react";
-import { useReactFlow } from "@xyflow/react";
+import { useReactFlow, useStoreApi } from "@xyflow/react";
 import { useCatalogueStore } from "../store/catalogueStore";
 import { useEditorStore } from "../store/editorStore";
 import { useInteractionStore } from "../store/interactionStore";
 import { iconForEntry } from "../lib/catalogueDisplay";
 import { canConnect } from "../lib/connectionRules";
 import { portsForEntry } from "../lib/ports";
+import {
+  ESTIMATED_NODE_SIZE,
+  collectHandlePoints,
+  nodeGeometry,
+  snapPosition,
+  virtualHandlePoints,
+} from "../lib/proximity";
 
 const CATEGORY_LABELS: Record<string, string> = {
   source: "Sources",
@@ -32,9 +39,12 @@ export function NodePalette() {
   const load = useCatalogueStore((s) => s.load);
   const addNode = useEditorStore((s) => s.addNode);
   const onConnect = useEditorStore((s) => s.onConnect);
+  const onNodesChange = useEditorStore((s) => s.onNodesChange);
+  const setPendingSnap = useInteractionStore((s) => s.setPendingSnap);
   const setPaletteDragType = useInteractionStore((s) => s.setPaletteDragType);
   const clearInteraction = useInteractionStore((s) => s.clear);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getInternalNode } = useReactFlow();
+  const storeApi = useStoreApi();
 
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(loadCollapsedState);
@@ -78,8 +88,9 @@ export function NodePalette() {
 
   /**
    * Click/Enter path: places the node at the centre of the viewport and wires it to the current
-   * selection when that's legal. This is also what makes the palette usable from the keyboard —
-   * the drag-only version had no keyboard equivalent at all.
+   * selection when that's legal, snapping it beside the selected node the same way a drop does.
+   * This is also what makes the palette usable from the keyboard — the drag-only version had no
+   * keyboard equivalent at all.
    */
   const addAtViewportCentre = useCallback(
     (type: string) => {
@@ -104,10 +115,43 @@ export function NodePalette() {
       const forward = { source: selectedNodeId, sourceHandle: null, target: newId, targetHandle: null };
       const backward = { source: newId, sourceHandle: null, target: selectedNodeId, targetHandle: null };
 
-      if (ports.inputs.length === 1 && canConnect(forward, ctx).ok) onConnect(forward);
-      else if (ports.outputs.length === 1 && canConnect(backward, ctx).ok) onConnect(backward);
+      let newHandleType: "source" | "target";
+      if (ports.inputs.length === 1 && canConnect(forward, ctx).ok) {
+        onConnect(forward);
+        newHandleType = "target";
+      } else if (ports.outputs.length === 1 && canConnect(backward, ctx).ok) {
+        onConnect(backward);
+        newHandleType = "source";
+      } else {
+        return;
+      }
+
+      // Both ends are single-port here (that's what the null handles above require), so the
+      // selected node's end is its only handle of the opposite type.
+      const selected = getInternalNode(selectedNodeId);
+      const theirs = selected && collectHandlePoints(selected).find((p) => p.type !== newHandleType);
+      if (!theirs) return;
+
+      const topLeft = {
+        x: centre.x - ESTIMATED_NODE_SIZE.width / 2,
+        y: centre.y - ESTIMATED_NODE_SIZE.height / 2,
+      };
+      const direction = useEditorStore.getState().flowDirection;
+      const mine = virtualHandlePoints(newId, topLeft, ESTIMATED_NODE_SIZE, ports, direction).find(
+        (p) => p.type === newHandleType,
+      );
+      if (!mine) return;
+
+      const obstacles: { x: number; y: number; width: number; height: number }[] = [];
+      for (const node of storeApi.getState().nodeLookup.values()) {
+        if (node.id !== newId) obstacles.push(nodeGeometry(node).rect);
+      }
+      const position = snapPosition({ mine, theirs }, { ...topLeft, ...ESTIMATED_NODE_SIZE }, direction, obstacles);
+      onNodesChange([{ type: "position", id: newId, position }]);
+      // Refined against the real handle positions once React Flow has measured the node.
+      setPendingSnap({ nodeId: newId, handleType: newHandleType, handleId: null, theirs });
     },
-    [screenToFlowPosition, addNode, onConnect],
+    [screenToFlowPosition, getInternalNode, storeApi, addNode, onConnect, onNodesChange, setPendingSnap],
   );
 
   const q = query.trim().toLowerCase();
@@ -158,7 +202,11 @@ export function NodePalette() {
                   draggable
                   onDragStart={(e) => onDragStart(e, entry.type)}
                   onDragEnd={onDragEnd}
-                  onClick={() => addAtViewportCentre(entry.type)}
+                  // A double-click delivers two clicks; only the first should add a node.
+                  // Keyboard activation reports detail 0, so it still gets through.
+                  onClick={(e) => {
+                    if (e.detail <= 1) addAtViewportCentre(entry.type);
+                  }}
                   title={
                     entry.implemented
                       ? "Drag onto the canvas, or click to add and connect"
